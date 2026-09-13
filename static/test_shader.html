@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shader Test 3</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #030508;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: false, depth: false });
+
+const vsSource = `
+  attribute vec2 a_pos;
+  void main() {
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`;
+
+const fsSource = `
+  precision highp float;
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec2 u_mouse;
+  uniform float u_reduced_motion;
+
+  // 2D rotation
+  mat2 rot(float a) {
+    float s = sin(a), c = cos(a);
+    return mat2(c, -s, s, c);
+  }
+
+  // Smooth C2 continuous analytical noise
+  float smoothNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float a = sin(dot(i, vec2(12.9898, 78.233)));
+    float b = sin(dot(i + vec2(1.0, 0.0), vec2(12.9898, 78.233)));
+    float c = sin(dot(i + vec2(0.0, 1.0), vec2(12.9898, 78.233)));
+    float d = sin(dot(i + vec2(1.0, 1.0), vec2(12.9898, 78.233)));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+
+  // Harmonic domain warping for liquid fluid dynamics
+  vec2 domainWarp(vec2 p, float t) {
+    // Primary fluid vortices
+    vec2 q = vec2(
+      sin(p.x * 0.95 + t * 0.60) + cos(p.y * 0.85 - t * 0.45),
+      cos(p.x * 0.80 - t * 0.50) + sin(p.y * 1.05 + t * 0.65)
+    );
+
+    // Cross-axis fluid distortion
+    vec2 r = vec2(
+      sin(p.x * 1.35 + 1.70 * q.y + t * 0.38 + 1.2),
+      cos(p.y * 1.25 + 1.55 * q.x - t * 0.32 + 2.4)
+    );
+
+    // Subtle organic perturbation
+    vec2 s = vec2(
+      sin(p.x * 2.2 + r.x * 1.2 + t * 0.25),
+      cos(p.y * 2.0 + r.y * 1.1 - t * 0.22)
+    );
+
+    return p + 0.40 * r + 0.18 * q + 0.05 * s;
+  }
+
+  // Evaluates liquid ribbons and glass folds
+  void evaluateFluid(vec2 p, float t, out float hMain, out float hRibbon2, out float hDeep, out float hCrest) {
+    vec2 wp = domainWarp(p, t);
+
+    // 1. Dominant sweeping luminous ribbon (bends, widens, and swoops diagonally)
+    // S-curve path with variable width
+    float curveMain = wp.y * 1.45 + 0.52 * sin(wp.x * 0.85 + t * 0.28) + 0.18 * cos(wp.x * 1.75 - t * 0.18) - 0.04;
+    float widthMain = 0.56 + 0.32 * sin(wp.x * 0.65 - t * 0.20);
+    float distMain = abs(curveMain) / max(0.12, widthMain);
+    hMain = exp(-distMain * distMain * 3.2);
+
+    // Razor-sharp liquid chrome crest line on the primary ribbon
+    hCrest = exp(-distMain * distMain * 32.0);
+
+    // 2. Secondary translucent ribbon (weaving and overlapping)
+    float curve2 = (wp.y + 0.48) * 1.85 - 0.45 * cos(wp.x * 0.92 + t * 0.24 + 0.8) + 0.16 * sin(wp.x * 1.6 - t * 0.15);
+    float width2 = 0.42 + 0.20 * cos(wp.x * 1.05 - t * 0.14);
+    float dist2 = abs(curve2) / max(0.10, width2);
+    hRibbon2 = exp(-dist2 * dist2 * 4.2);
+
+    // 3. Deep voluminous liquid body (expansive smooth fluid mass)
+    float curveDeep = wp.y * 1.10 + 0.62 * sin(wp.x * 0.60 + t * 0.20) - 0.12;
+    float widthDeep = 1.20 + 0.50 * sin(wp.x * 0.45 - t * 0.12);
+    float distDeep = abs(curveDeep) / max(0.20, widthDeep);
+    hDeep = exp(-distDeep * distDeep * 1.6);
+  }
+
+  void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+
+    // Diagonal angle ~ -28 degrees for dynamic sweep
+    float rotAngle = -0.48;
+    mat2 rotM = rot(rotAngle);
+    vec2 p = rotM * uv;
+    p.y += 0.05; // Asymmetric composition
+    p += (u_mouse - 0.5) * 0.05;
+
+    float t = u_time * (u_reduced_motion > 0.5 ? 0.015 : 0.12);
+
+    // Height field evaluation
+    float hMain, hRibbon2, hDeep, hCrest;
+    evaluateFluid(p, t, hMain, hRibbon2, hDeep, hCrest);
+    float hTot = hMain * 1.0 + hRibbon2 * 0.65 + hDeep * 0.45;
+
+    // Normal calculation via finite differences
+    float eps = 0.0035;
+    float hX, dX1, dX2, dX3;
+    float hY, dY1, dY2, dY3;
+    evaluateFluid(p + vec2(eps, 0.0), t, hX, dX1, dX2, dX3);
+    evaluateFluid(p + vec2(0.0, eps), t, hY, dY1, dY2, dY3);
+
+    float hTotX = hX * 1.0 + dX1 * 0.65 + dX2 * 0.45;
+    float hTotY = hY * 1.0 + dY1 * 0.65 + dY2 * 0.45;
+
+    vec2 grad = vec2(hTot - hTotX, hTot - hTotY) / eps;
+    vec3 N = normalize(vec3(grad * 0.45, 1.0));
+    vec3 V = vec3(0.0, 0.0, 1.0);
+
+    // Lighting & Fresnel
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = pow(1.0 - NdotV, 2.5);
+    float sharpFresnel = pow(1.0 - NdotV, 6.0);
+
+    // Key Light 1: Cool white chrome reflection (from top-left)
+    vec3 L1 = normalize(vec3(-0.46, 0.72, 0.76));
+    vec3 H1 = normalize(L1 + V);
+    float NdotH1 = max(0.0, dot(N, H1));
+    float specBroad = pow(NdotH1, 14.0) * 0.50;
+    float specSharp = pow(NdotH1, 80.0) * 1.40;
+    float specGlint = pow(NdotH1, 320.0) * 2.10;
+
+    // Fill Light 2: Electric-cyan backlight & edge sheen
+    vec3 L2 = normalize(vec3(0.68, -0.52, 0.48));
+    vec3 H2 = normalize(L2 + V);
+    float NdotH2 = max(0.0, dot(N, H2));
+    float specRim = pow(NdotH2, 22.0) * 0.75;
+
+    // Chromatic dispersion & iridescence along thin refractive edges
+    float rimAngle = atan(grad.y, grad.x);
+    float iridPhase = rimAngle * 1.50 + fresnel * 4.4 + p.x * 0.70;
+    vec3 colLavender  = vec3(0.78, 0.72, 0.96);
+    vec3 colViolet    = vec3(0.52, 0.30, 0.88);
+    vec3 colWarmAmber = vec3(0.98, 0.58, 0.22);
+    vec3 colCyanSheen = vec3(0.18, 0.85, 0.98);
+
+    vec3 iridColor = mix(
+      mix(colViolet, colLavender, 0.5 + 0.5 * sin(iridPhase)),
+      colWarmAmber,
+      clamp(0.5 + 0.5 * cos(iridPhase + 1.15), 0.0, 1.0)
+    );
+    float thinEdge = smoothstep(0.15, 0.72, fresnel) * smoothstep(0.08, 0.55, length(grad) * 0.08);
+    vec3 edgeIridescence = iridColor * thinEdge * 0.60;
+
+    // Dark cinematic canvas base (#030508 to #080B12)
+    vec3 bgDeep = vec3(0.012, 0.020, 0.032);
+    vec3 bgMid  = vec3(0.031, 0.043, 0.071);
+    vec3 bg     = mix(bgDeep, bgMid, uv.y * 0.5 + 0.5);
+
+    // Fluid palette
+    vec3 colDeepNavy     = vec3(0.015, 0.045, 0.155);
+    vec3 colRoyalBlue    = vec3(0.028, 0.135, 0.460);
+    vec3 colElectricBlue = vec3(0.055, 0.370, 0.940);
+    vec3 colCyanGlow     = vec3(0.110, 0.720, 0.970);
+    vec3 colWhiteBlue    = vec3(0.910, 0.960, 1.000);
+    vec3 colPureWhite    = vec3(1.000, 1.000, 1.000);
+
+    // Layer 1: Voluminous Deep Blue fluid body
+    float density = clamp(hTot * 1.15, 0.0, 1.0);
+    vec3 liquid = mix(bg, colDeepNavy, smoothstep(0.02, 0.30, density));
+    liquid = mix(liquid, colRoyalBlue, smoothstep(0.16, 0.50, density) * 0.85);
+    liquid = mix(liquid, colElectricBlue, smoothstep(0.32, 0.70, density) * 0.88);
+    liquid = mix(liquid, colCyanGlow, smoothstep(0.52, 0.88, density) * 0.84);
+
+    // Layer 2: Dominant Luminous White-Blue Ribbon
+    float coreLuminance = smoothstep(0.52, 0.96, hMain);
+    liquid = mix(liquid, colWhiteBlue, coreLuminance * 0.90);
+
+    // Razor-sharp Chrome Crest Highlight along ribbon spine
+    liquid = mix(liquid, colPureWhite, hCrest * 0.85);
+
+    // Layer 3: Secondary Glass Ribbon Fold
+    float foldGlow = smoothstep(0.55, 0.94, hRibbon2);
+    liquid = mix(liquid, mix(colWhiteBlue, colCyanGlow, 0.35), foldGlow * 0.65);
+
+    // Edge Illumination (Cyan & Electric-Blue diffused glow)
+    float edgeGlow = smoothstep(0.10, 0.48, hMain) * (1.0 - smoothstep(0.48, 0.85, hMain));
+    liquid += colCyanGlow * edgeGlow * 0.44;
+    liquid += colElectricBlue * fresnel * density * 0.58;
+
+    // Prismatic Iridescence Sheen
+    liquid += edgeIridescence;
+
+    // Specular Chrome & Liquid Glass Reflections
+    vec3 spec = colPureWhite * (specSharp + specGlint) + colCyanGlow * specBroad + colElectricBlue * specRim;
+    // Concentrate highlights on surface crests, keeping shadows deep
+    spec *= smoothstep(0.06, 0.45, density);
+    liquid += spec;
+
+    // Contrast Mask (Preserves deep black canvas)
+    float mask = smoothstep(0.01, 0.28, density);
+    vec3 finalCol = mix(bg, liquid, mask);
+
+    // Subtle cinematic vignette
+    float vignette = 1.0 - smoothstep(0.75, 1.55, length(uv * vec2(0.9, 1.0)));
+    finalCol = mix(bgDeep, finalCol, vignette * 0.20 + 0.80);
+
+    // Filmic Tonemapping
+    finalCol = (finalCol * (1.0 + finalCol * 0.22)) / (1.0 + finalCol);
+
+    // Dither for silky gradient transitions
+    float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+    finalCol += dither;
+
+    gl_FragColor = vec4(finalCol, 1.0);
+  }
+`;
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(shader));
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+const program = gl.createProgram();
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
+gl.linkProgram(program);
+
+const posLoc = gl.getAttribLocation(program, "a_pos");
+const resLoc = gl.getUniformLocation(program, "u_resolution");
+const timeLoc = gl.getUniformLocation(program, "u_time");
+const mouseLoc = gl.getUniformLocation(program, "u_mouse");
+const motionLoc = gl.getUniformLocation(program, "u_reduced_motion");
+
+const posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1,
+   1, -1,
+  -1,  1,
+  -1,  1,
+   1, -1,
+   1,  1
+]), gl.STATIC_DRAW);
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener("resize", resize);
+resize();
+
+let startTime = performance.now();
+function render(now) {
+  const elapsed = (now - startTime) / 1000;
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(resLoc, canvas.width, canvas.height);
+  gl.uniform1f(timeLoc, elapsed + 24.0);
+  gl.uniform2f(mouseLoc, 0.5, 0.5);
+  gl.uniform1f(motionLoc, 0.0);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      color: var(--figma-color-text, #e4e4e7);
+      background: var(--figma-color-bg, #1e1e2e);
+      padding: 16px;
+      min-height: 100%;
+    }
+    .header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 20px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--figma-color-border, rgba(255,255,255,0.08));
+    }
+    .header svg { width: 28px; height: 28px; }
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .status {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: 10px; margin-bottom: 16px;
+      background: rgba(255,255,255,0.04); font-size: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #71717a; flex-shrink: 0;
+    }
+    .status-dot.connected { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+    .status-dot.error { background: #f87171; }
+    .field { margin-bottom: 12px; }
+    .field label {
+      display: block; font-size: 11px; font-weight: 500;
+      color: var(--figma-color-text-secondary, #a1a1aa); margin-bottom: 4px;
+    }
+    .field input {
+      width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--figma-color-text, #e4e4e7); outline: none;
+      transition: border-color .2s;
+    }
+    .field input:focus { border-color: #6366f1; }
+    .btn {
+      display: block; width: 100%; padding: 10px; border-radius: 10px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      border: none; transition: all .2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff; margin-bottom: 8px;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-danger {
+      background: rgba(248,113,113,0.15);
+      color: #f87171; margin-bottom: 8px;
+    }
+    .btn-danger:hover { background: rgba(248,113,113,0.25); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .log {
+      margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .log h3 {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: #a1a1aa; margin-bottom: 8px;
+    }
+    .log-entries {
+      max-height: 180px; overflow-y: auto;
+      font-family: 'JetBrains Mono', 'SF Mono', monospace;
+      font-size: 10px; color: #71717a; line-height: 1.6;
+    }
+    .log-entry.success { color: #4ade80; }
+    .log-entry.error { color: #f87171; }
+    .log-entry.info { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#6366f1" opacity="0.8"/>
+      <path d="M2 17L12 22L22 17" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round"/>
+      <path d="M2 12L12 17L22 12" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <h1>Zenith Bridge</h1>
+  </div>
+
+  <div class="status" id="statusBar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Not connected</span>
+  </div>
+
+  <div id="connectForm">
+    <div class="field">
+      <label>Auth Token</label>
+      <input type="text" id="tokenInput" placeholder="Paste token from Zenith Settings" />
+    </div>
+    <button class="btn btn-primary" id="connectBtn" onclick="connect()">Connect to Zenith</button>
+  </div>
+
+  <div id="connectedActions" style="display: none;">
+    <button class="btn btn-danger" onclick="doDisconnect()">Disconnect</button>
+  </div>
+
+  <div class="log">
+    <h3>Activity Log</h3>
+    <div class="log-entries" id="logEntries"></div>
+  </div>
+
+  <script>
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const connectForm = document.getElementById('connectForm');
+    const connectedActions = document.getElementById('connectedActions');
+    const logEntries = document.getElementById('logEntries');
+
+    function addLog(msg, type = '') {
+      const ts = new Date().toLocaleTimeString();
+      const el = document.createElement('div');
+      el.className = `log-entry ${type}`;
+      el.textContent = `[${ts}] ${msg}`;
+      logEntries.prepend(el);
+      // Keep max 50 entries
+      while (logEntries.children.length > 50) {
+        logEntries.removeChild(logEntries.lastChild);
+      }
+    }
+
+    function connect() {
+      const token = document.getElementById('tokenInput').value.trim();
+      if (!token) { addLog('Token required', 'error'); return; }
+      addLog('Connecting to Zenith...', 'info');
+      parent.postMessage({ pluginMessage: { type: 'connect', token } }, '*');
+    }
+
+    function doDisconnect() {
+      parent.postMessage({ pluginMessage: { type: 'disconnect' } }, '*');
+      setDisconnected('User disconnected');
+    }
+
+    function setConnected() {
+      statusDot.className = 'status-dot connected';
+      statusText.textContent = 'Connected to Zenith';
+      connectForm.style.display = 'none';
+      connectedActions.style.display = 'block';
+    }
+
+    function setDisconnected(reason) {
+      statusDot.className = 'status-dot';
+      statusText.textContent = reason || 'Not connected';
+      connectForm.style.display = 'block';
+      connectedActions.style.display = 'none';
+    }
+
+    // Handle messages from plugin code
+    onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case 'connected':
+          setConnected();
+          addLog('Connected to Zenith', 'success');
+          break;
+        case 'disconnected':
+          setDisconnected(msg.reason);
+          addLog(`Disconnected: ${msg.reason}`, 'error');
+          break;
+        case 'error':
+          addLog(`Error: ${msg.message}`, 'error');
+          break;
+        case 'handshake':
+          addLog(`Handshake v${msg.version} — ${msg.commands.length} commands available`, 'success');
+          break;
+        case 'executing':
+          addLog(`Executing: ${msg.command_type}`, 'info');
+          break;
+        case 'completed':
+          addLog(`✓ ${msg.command_type} completed`, 'success');
+          break;
+        case 'failed':
+          addLog(`✗ ${msg.command_type} failed: ${msg.error}`, 'error');
+          break;
+      }
+    };
+  </script>
+</body>
+</html>

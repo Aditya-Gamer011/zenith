@@ -1,0 +1,1 @@
+"""zenith core package: config, provider, orchestration brain, tools registry."""

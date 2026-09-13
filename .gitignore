@@ -1,0 +1,102 @@
+# ── Environment & Secrets ──────────────────────────────────────────────
+.env
+*.env
+.env.*
+.env.local
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# ── Python Virtual Environments & Caches ──────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# ── Runtime Databases & Local State ────────────────────────────────────
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db-journal
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+!data/.gitkeep
+
+# ── Temporary Outputs, Uploads & Screenshots ──────────────────────────
+static/screenshots/*
+!static/screenshots/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+/tmp/zenith-files/
+scratch/
+*.zip
+
+# ── Node & Package Managers ───────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.gev-logs/
+.gev-cache/
+.gstack/
+
+# ── Build Artifacts ───────────────────────────────────────────────────
+dist/
+build/
+*.egg
+gods-eye-view/dist/
+
+# ── Operating System & IDEs ───────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── AI Agents, Claude & Copilot Artifacts ──────────────────────────────
+.claude/
+.claude*
+.cursor/
+.cursorrules
+.windsurf/
+.gemini/
+.antigravity/
+.aider*
+*.brain
+*.brain/
+brain/
+*.transcript*
+transcripts/
+chat_history/
+conversations/
+vectordb/
+chroma/
+faiss/
+jarvis_brain*
+peace_brain*
+zenith_brain*
+
+# ── Logging & Task Logs ───────────────────────────────────────────────
+*.log
+logs/
+worker/tasks.jsonl
+*.jsonl

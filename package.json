@@ -1,0 +1,12 @@
+{
+  "name": "zenith",
+  "productName": "Zenith",
+  "version": "2.0.0",
+  "description": "Zenith — Proactive Autonomous AI Operating Layer & Homelab Command Engine",
+  "author": "Aditya Singh",
+  "license": "MIT",
+  "scripts": {
+    "start": "python run.py",
+    "test": "pytest"
+  }
+}

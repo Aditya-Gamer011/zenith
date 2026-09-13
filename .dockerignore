@@ -1,0 +1,16 @@
+# PEACE — container ignore rules
+.env
+*.db
+data/
+static/screenshots/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+README.md
+ROADMAP.md
+docs/
+tests/
+node_modules/
+.DS_Store

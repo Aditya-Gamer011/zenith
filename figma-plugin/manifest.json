@@ -1,0 +1,12 @@
+{
+  "name": "Zenith Design Bridge",
+  "id": "zenith-design-bridge",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["localhost", "*.zenith.local"],
+    "reasoning": "Connects to local Zenith backend for AI-assisted design operations"
+  }
+}

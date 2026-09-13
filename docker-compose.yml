@@ -1,0 +1,45 @@
+# Zenith — local dev compose
+# Usage:  cp .env.example .env   →   fill in GEMINI_API_KEY   →   docker compose up --build
+services:
+  zenith:
+    build: .
+    container_name: zenith
+    restart: unless-stopped
+    ports:
+      - "${ZENITH_PORT:-8005}:8005"
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8005
+      - ZENITH_PORT=8005
+      - TZ=Asia/Kolkata
+      # Voice: Groq Whisper STT + Edge neural TTS (+ STT/TTS provider choice)
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_WHISPER_MODEL=${GROQ_WHISPER_MODEL:-whisper-large-v3-turbo}
+      - STT_PROVIDER=${STT_PROVIDER:-groq}
+      - TTS_PROVIDER=${TTS_PROVIDER:-edgetts}
+      - EDGE_VOICE=${EDGE_VOICE:-en-IN-NeerjaNeural}
+      # homelab control-plane — socket is read-only (no root in container)
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - GUARDED_CONTAINERS=${GUARDED_CONTAINERS:-zenith,hostpheus,codraw-app,jellyfin,sonarr,radarr,prowlarr,qbittorrent,seerr,n8n,portainer,uptime-kuma,vaultwarden,homepage,twilight-mc-server,twilight-mc-playit,twilight-mc-bore,cloudflared,homelab-caddy}
+    volumes:
+      # persist memory + screenshots + static assets + code outside the container
+      - ./data:/app/data
+      - ./static:/app/static
+      - ./zenith:/app/zenith
+      - ./tests:/app/tests
+      # control-plane: Docker socket + GitHub creds + workspace
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${GH_CONFIG_DIR:-${HOME}/.config/gh}:/root/.config/gh:ro
+      - ${HOST_WORKSPACE:-.}:/workspace:ro
+      # Generated files (PDFs, docs, spreadsheets) persist here
+      - /tmp/zenith-files:/tmp/zenith-files
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

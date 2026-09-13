@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenith · Autonomous AI Companion &amp; Homelab OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/styles.css?v=69" />
+<link rel="stylesheet" href="/static/custom_theme.css" id="custom-theme-link" />
+<style id="live-custom-css"></style>
+<script>
+  // Theme, resolved before first paint so there's no light-flash.
+  // Auto rule: night in India (20:00–08:00 IST) → dark.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("zenith-theme"); } catch (e) {}
+    var dark;
+    if (saved === "dark") dark = true;
+    else if (saved === "light") dark = false;
+    else {
+      // India's offset is fixed at UTC+5:30, so derive directly.
+      var ist = new Date(Date.now() + 330 * 60000).getUTCHours();
+      dark = ist >= 20 || ist < 8;
+    }
+    var el = document.documentElement;
+    el.setAttribute("data-theme", dark ? "dark" : "light");
+    el.classList.add("theme-smooth");
+  })();
+
+  // Time-appropriate greeting before any async work — Zenith greets user
+  // right away, then the briefing refines it moments later.
+  (function () {
+    var h = new Date(Date.now() + 330 * 60000).getUTCHours();
+    var g;
+    if (h >= 5 && h < 12) g = "Good morning";
+    else if (h >= 12 && h < 17) g = "Good afternoon";
+    else if (h >= 17 && h < 21) g = "Good evening";
+    else g = "Good night";
+    var el = document.getElementById("wlcm-greet");
+    if (el) el.textContent = g;
+  })();
+</script>
+</head>
+<body>
+
+<!-- CINEMATIC MOVIE ONBOARDING EXPERIENCE -->
+<div class="starter-screen cinematic-onboarding" id="starter-screen" style="display:none">
+  <!-- Sky / Space / Flight Canvas & Layers Container -->
+  <div class="cinema-stage is-flying" id="cinema-stage">
+    <!-- Unified 60 FPS Volumetric 3D Cloud Flight Canvas -->
+    <canvas id="cinema-flight-canvas" class="cinema-flight-canvas"></canvas>
+
+    <!-- Cosmic Darkness Void (Everything goes dark) -->
+    <div class="cinema-void-curtain" id="cinema-void-curtain"></div>
+
+    <!-- Flight Intro Title -->
+    <div class="cinema-flight-hud" id="cinema-flight-hud">
+      <div class="cinema-hero-title" id="cinema-hero-title">
+        <h1 class="cinema-brand">ZENITH</h1>
+        <p class="cinema-tagline" id="hud-tagline-text">Descending through cloud deck...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Liquid Glass Animated WebGL Shader Canvas -->
+  <canvas id="cinema-liquid-shader" class="cinema-liquid-shader"></canvas>
+
+  <!-- Interactive Story Beats Deck (Reveals in darkness) -->
+  <div class="cinema-content-deck" id="cinema-content-deck">
+    <!-- Ambient Luminous AI Core -->
+    <div class="cinema-core-wrap">
+      <div class="cinema-core-rings">
+        <div class="core-ring core-ring-3"></div>
+        <div class="core-ring core-ring-2"></div>
+        <div class="core-ring core-ring-1"></div>
+        <div class="core-center-orb" id="cinema-core-orb">
+          <div class="core-pulse-glow"></div>
+          <div class="core-inner-emblem">✦</div>
+        </div>
+      </div>
+      <div class="core-voice-visualizer" id="cinema-voice-viz">
+        <span class="viz-bar"></span><span class="viz-bar"></span><span class="viz-bar"></span><span class="viz-bar"></span>
+        <span class="viz-bar"></span><span class="viz-bar"></span><span class="viz-bar"></span><span class="viz-bar"></span>
+      </div>
+    </div>
+
+    <!-- Beat 1: Name Discovery Step -->
+    <div class="cinema-step-card is-active" id="cinema-step-name">
+      <div class="cinema-dialogue-box">
+        <span class="cinema-speaker-badge">Zenith</span>
+        <h2 class="cinema-heading" id="cinema-name-prompt">What should I call you? <span class="cinema-required-star" title="Mandatory field">*</span></h2>
+        <p class="cinema-subtext">Set your name or callsign for your workspace and briefings.</p>
+      </div>
+      <div class="cinema-form-row">
+        <label class="cinema-field-label" for="starter-name" style="margin-bottom: 2px;">
+          <span>Your Name</span>
+          <span class="cinema-required-star" title="Mandatory field">*</span>
+        </label>
+        <div class="cinema-input-wrap">
+          <svg class="cinema-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input type="text" id="starter-name" class="cinema-input" placeholder="Your name..." autocomplete="name" maxlength="36" />
+          <button type="button" class="cinema-btn-action" id="cinema-name-submit-btn">
+            <span>Continue</span>
+            <kbd class="cinema-kbd">↵</kbd>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Beat 2: Name Acknowledged Beat -->
+    <div class="cinema-step-card" id="cinema-step-compliment" style="display:none">
+      <div class="cinema-dialogue-box">
+        <span class="cinema-speaker-badge">Zenith</span>
+        <h2 class="cinema-heading-praise" id="cinema-compliment-text">
+          <!-- Populated dynamically with clean, chill welcome -->
+        </h2>
+        <div class="cinema-compliment-badge" id="cinema-compliment-badge">
+          <span class="badge-icon">●</span>
+          <span id="cinema-compliment-sub">Personalizing your companion</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Beat 3: Profile Step (Birthday/Age, Hobbies, Bio) -->
+    <div class="cinema-step-card" id="cinema-step-profile" style="display:none">
+      <div class="cinema-dialogue-box">
+        <span class="cinema-speaker-badge">Personalization</span>
+        <h2 class="cinema-heading" id="cinema-profile-heading">Tell me a little about yourself</h2>
+        <p class="cinema-subtext" id="cinema-profile-subtext">A few details to help Zenith understand your world, celebrate milestones, and tailor suggestions.</p>
+      </div>
+
+      <div class="cinema-profile-form">
+        <!-- Birthday or Age -->
+        <div class="cinema-field-group">
+          <label class="cinema-field-label" for="starter-birthday">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Birthday or Age</span>
+            <span class="cinema-field-hint">(optional)</span>
+          </label>
+          <div class="cinema-input-wrap">
+            <input type="text" id="starter-birthday" class="cinema-input" placeholder="e.g. October 14, 2004 or 21" autocomplete="bday" />
+          </div>
+        </div>
+
+        <!-- Hobbies & Interests -->
+        <div class="cinema-field-group">
+          <label class="cinema-field-label" for="starter-hobbies">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span>Hobbies &amp; Interests</span>
+            <span class="cinema-field-hint">(optional)</span>
+          </label>
+          <div class="cinema-input-wrap">
+            <input type="text" id="starter-hobbies" class="cinema-input" placeholder="e.g. Coding, music, homelab, gaming, sci-fi..." />
+          </div>
+        </div>
+
+        <!-- Bio / Info about yourself -->
+        <div class="cinema-field-group">
+          <label class="cinema-field-label" for="starter-bio">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>About You</span>
+            <span class="cinema-field-hint">(optional)</span>
+          </label>
+          <div class="cinema-textarea-wrap">
+            <textarea id="starter-bio" class="cinema-textarea" rows="3" placeholder="What are your current projects, goals, or what should Zenith know about you?"></textarea>
+          </div>
+        </div>
+
+        <div class="cinema-profile-actions">
+          <button type="button" class="cinema-btn-primary" id="cinema-profile-submit-btn">
+            <span>Continue ➔</span>
+          </button>
+          <button type="button" class="cinema-secondary-btn" id="cinema-profile-skip-btn">
+            <span>Skip for now</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Beat 3: Gemini API Key Step -->
+    <div class="cinema-step-card" id="cinema-step-key" style="display:none">
+      <div class="cinema-dialogue-box">
+        <span class="cinema-speaker-badge">Intelligence Engine</span>
+        <h2 class="cinema-heading" id="cinema-key-prompt">Connect your Gemini API Key <span class="cinema-required-star" title="Mandatory field">*</span></h2>
+        <p class="cinema-subtext">Zenith uses Google Gemini for reasoning, autonomous tasks, and tools. Stored securely on your device.</p>
+      </div>
+
+      <div class="cinema-key-box">
+        <div class="cinema-key-meta-bar">
+          <span class="meta-label"><span class="meta-dot"></span>Google AI Studio API Key <span class="cinema-required-star" title="Mandatory field">*</span></span>
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="cinema-external-link" title="Open Google AI Studio to create a free key">
+            <span>Get free key</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+          </a>
+        </div>
+
+        <div class="cinema-input-wrap key-input-wrap">
+          <svg class="cinema-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L14 9l-3 3-2-2-4 4 3 3 4-4-2-2 3.5-3.5 1.5 1.5 2-2z"/></svg>
+          <input type="password" id="starter-gemini-key" class="cinema-input mono" placeholder="Paste AIzaSy... key" autocomplete="off" spellcheck="false" />
+          <button type="button" class="cinema-icon-btn" id="starter-key-toggle-btn" title="Toggle visibility">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button type="button" class="cinema-paste-btn" id="cinema-paste-key-btn" title="Paste from clipboard">
+            Paste
+          </button>
+        </div>
+
+        <div class="starter-key-status" id="starter-key-status" style="display:none"></div>
+
+        <div class="cinema-key-actions">
+          <button type="button" class="cinema-btn-primary" id="starter-launch-btn">
+            <span class="btn-spinner" id="starter-launch-spinner" style="display:none"></span>
+            <span id="starter-launch-btn-text">Save & Continue</span>
+          </button>
+          <button type="button" class="starter-test-btn cinema-secondary-btn" id="starter-test-key-btn" title="Verify key with Google AI Studio">
+            <span class="btn-spinner" id="starter-test-spinner" style="display:none"></span>
+            <span id="starter-test-btn-text">Test Key</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Beat 4: Welcome & Choice -->
+    <div class="cinema-step-card" id="cinema-step-welcome" style="display:none">
+      <div class="cinema-dialogue-box">
+        <span class="cinema-speaker-badge">Connected</span>
+        <h2 class="cinema-heading-welcome" id="cinema-welcome-text">You're all set.</h2>
+        <p class="cinema-subtext-welcome">Everything is calibrated. How would you like to start?</p>
+      </div>
+
+      <!-- The 2 Options -->
+      <div class="cinema-dual-options" id="cinema-dual-options">
+        <!-- Option 1: Configure Integrations -->
+        <div class="cinema-option-card" id="cinema-opt-settings" tabindex="0" role="button">
+          <div class="option-icon-frame">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l-.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </div>
+          <div class="option-content">
+            <span class="option-badge">INTEGRATIONS</span>
+            <h3 class="option-title">Configure Tools</h3>
+            <p class="option-desc">Connect Home Assistant, GitHub, email notifications, and voice input.</p>
+          </div>
+          <div class="option-action-row">
+            <span class="option-action-link" id="starter-open-full-settings">Open Settings ➔</span>
+          </div>
+        </div>
+
+        <!-- Option 2: Enter Console -->
+        <div class="cinema-option-card primary" id="cinema-opt-operations" tabindex="0" role="button">
+          <div class="option-icon-frame primary-frame">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div class="option-content">
+            <span class="option-badge primary-badge">START</span>
+            <h3 class="option-title">Open Console</h3>
+            <p class="option-desc">Jump straight to the command center. Conversational tools and autonomous agents are ready.</p>
+          </div>
+          <div class="option-action-row">
+            <button type="button" class="cinema-launch-cockpit-btn" id="cinema-btn-start-ops">
+              <span>Enter Console ➔</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Full 8-Category Settings & Secrets Studio (Opened via Settings ⚙️) -->
+<div class="setup-screen" id="setup-screen" style="display:none">
+  <div class="setup-backdrop" id="setup-backdrop"></div>
+  <div class="setup-bg-glow"></div>
+  <div class="setup-container">
+    <!-- Left Sidebar -->
+    <aside class="setup-sidebar">
+      <div class="setup-sidebar-top">
+        <div class="setup-brand-row">
+          <div class="setup-sun-pulse" aria-hidden="true">
+            <span class="setup-sun-core"></span>
+          </div>
+          <div class="setup-brand-titles">
+            <div class="setup-title-badge">Zenith</div>
+            <h1 class="setup-title" id="setup-title">Setup Wizard</h1>
+          </div>
+        </div>
+
+        <!-- Progress / Readiness Indicator -->
+        <div class="setup-readiness-box" id="setup-readiness-box">
+          <div class="setup-readiness-head">
+            <span class="setup-readiness-label">Core Readiness</span>
+            <span class="setup-readiness-pct" id="setup-readiness-pct">Waiting</span>
+          </div>
+          <div class="setup-progress-bar">
+            <div class="setup-progress-fill" id="setup-progress-fill" style="width: 20%"></div>
+          </div>
+          <span class="setup-readiness-hint" id="setup-readiness-hint">Gemini API Key required</span>
+        </div>
+      </div>
+
+      <!-- Category Navigation List -->
+      <nav class="setup-nav-list" id="setup-tabs-bar" aria-label="Setup Categories">
+        <!-- Rendered dynamically by app.js with category icons & active pills -->
+      </nav>
+
+      <div class="setup-sidebar-foot">
+        <div class="setup-tip-card">
+          <span class="setup-tip-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> <span>Quick tip</span></span>
+          <p class="setup-tip-txt">Only the <strong>Gemini API Key</strong> is required to launch. All other services can be connected anytime via Settings.</p>
+        </div>
+        <button type="button" class="setup-replay-intro-btn" id="setup-replay-intro-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="20" x="2" y="2" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+          <span>Replay Cinematic Intro</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Right Main Detail Panel -->
+    <main class="setup-main-panel">
+      <!-- Category Header Bar -->
+      <header class="setup-panel-header">
+        <div class="setup-cat-heading-box">
+          <div class="setup-cat-eyebrow" id="setup-cat-eyebrow">Category</div>
+          <h2 class="setup-cat-title" id="setup-cat-title">AI Brain &amp; Intelligence</h2>
+          <p class="setup-cat-desc" id="setup-cat-desc">The central reasoning engine for Zenith conversation and autonomous actions.</p>
+        </div>
+        <div class="setup-header-ctrls">
+          <button type="button" class="setup-close-btn" id="setup-close-btn" title="Close" style="display:none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable Panels Container -->
+      <div class="setup-panel-scroll" id="setup-content-scroll">
+        <div class="setup-category-panels" id="setup-category-panels">
+          <div class="setup-loading-spinner-box">
+            <div class="setup-spinner"></div>
+            <span>Loading configuration catalog...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Action Footer -->
+      <footer class="setup-panel-footer">
+        <div class="setup-footer-left">
+          <div class="setup-status-pill" id="setup-status-pill">
+            <span class="setup-status-dot" id="setup-status-dot"></span>
+            <span id="setup-status-text">Enter your Gemini API key to activate</span>
+          </div>
+        </div>
+        <div class="setup-footer-right">
+          <button type="button" class="setup-btn-sec" id="setup-skip-btn" style="display:none">Cancel</button>
+          <button type="button" class="setup-btn-primary" id="setup-save-btn">
+            <span class="btn-spinner" id="setup-btn-spinner" style="display:none"></span>
+            <span id="setup-save-btn-text">Save &amp; Launch Zenith</span>
+          </button>
+        </div>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<div class="app" id="app-root">
+
+  <!-- Top bar -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <div class="logo" id="logo-pulse" aria-label="Zenith">
+        <span class="logo-sun"></span>
+      </div>
+      <div class="hdr-id">
+        <span class="hdr-name">zenith</span>
+      </div>
+      <!-- Sensory & Privacy indicator chips -->
+      <div class="hdr-sensor-strip" id="hdr-sensor-strip">
+        <button type="button" class="sensor-chip" id="chip-ghost" title="Ghost Mode (Master Privacy Switch)">
+          <span class="chip-dot ghost"></span>
+          <span class="chip-label">Ghost</span>
+        </button>
+        <button type="button" class="sensor-chip active" id="chip-mic" title="Microphone / Voice Active">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Mic</span>
+        </button>
+        <button type="button" class="sensor-chip" id="chip-camera" title="Camera / Computer Vision">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Camera</span>
+        </button>
+        <button type="button" class="sensor-chip active" id="chip-screen" title="Clippy Vision Screen Awareness Active">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Screen</span>
+        </button>
+        <button type="button" class="sensor-chip active" id="chip-browser" title="Unified Browser Automation Active">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Browser</span>
+        </button>
+        <button type="button" class="sensor-chip active" id="chip-memory" title="Mem0 Long-Term Memory Active">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Mem0</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="hdr-right">
+      <div class="hdr-controls">
+        <button class="hdr-btn hdr-cmd-btn" id="cmd-palette-btn" title="Command Palette (⌘K / Ctrl+K)" aria-label="Command Palette">
+          <span class="cmd-icon">⌘</span>
+          <span class="cmd-label">K</span>
+        </button>
+        <button class="hdr-btn" id="theme-btn" title="Toggle dark mode" aria-label="Dark mode">
+          <svg id="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          <svg id="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <button class="hdr-btn" id="mem-btn" title="Agenda &amp; notes" aria-label="Agenda">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>
+        </button>
+        <button class="hdr-btn" id="voice-btn" title="Voice · hold Space to talk" aria-label="Voice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <button class="hdr-btn" id="camera-btn" title="Camera · live vision and gesture tracking" aria-label="Camera">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <button class="hdr-btn" id="context-btn" title="Operating Layer · Screen, Activity &amp; Context" aria-label="Context &amp; Activity">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5l3 7 4-14 3 7h5"/></svg>
+        </button>
+        <button class="hdr-btn" id="term-btn" title="Execution log" aria-label="Logs">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+        </button>
+        <button class="hdr-btn" id="clear-btn" title="Start a new chat" aria-label="New chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+
+        <!-- User profile dropdown -->
+        <div class="hdr-user-menu" id="hdr-user-menu" style="display:none">
+          <button class="hdr-user-btn" id="hdr-user-btn" title="User Profile" aria-label="User Account">
+            <span class="hdr-avatar" id="hdr-user-avatar">U</span>
+            <span class="hdr-uname" id="hdr-user-name">User</span>
+          </button>
+          <div class="hdr-dropdown" id="hdr-user-dropdown" style="display:none">
+            <div class="hdr-dropdown-header">
+              <div class="hdr-dropdown-name" id="hdr-dropdown-name">User</div>
+              <div class="hdr-dropdown-email" id="hdr-dropdown-email">user@local</div>
+              <div class="hdr-dropdown-badge" id="hdr-dropdown-badge">Owner</div>
+            </div>
+            <div class="hdr-dropdown-divider"></div>
+            <button type="button" class="hdr-dropdown-item" id="hdr-settings-link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l-.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Settings &amp; Secrets</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Floating Telemetry Popover -->
+  <div class="telemetry-popover" id="telemetry-popover" style="display:none">
+    <div class="tp-header">
+      <div class="tp-title">
+        <span class="tp-beacon"></span> Homelab &amp; OS Telemetry
+      </div>
+      <button class="tp-close" id="tp-close-btn" title="Close telemetry">✕</button>
+    </div>
+    <div class="tp-body">
+      <div class="tp-metrics-grid">
+        <div class="tp-metric-card">
+          <div class="tp-metric-lbl">Status</div>
+          <div class="tp-metric-val ok" id="tp-mode-val">Active</div>
+        </div>
+        <div class="tp-metric-card">
+          <div class="tp-metric-lbl">Brain</div>
+          <div class="tp-metric-val" id="tp-brain-val">Gemini 2.5 Flash</div>
+        </div>
+        <div class="tp-metric-card">
+          <div class="tp-metric-lbl">Containers</div>
+          <div class="tp-metric-val ok" id="tp-containers-val">Active</div>
+        </div>
+        <div class="tp-metric-card">
+          <div class="tp-metric-lbl">Worker</div>
+          <div class="tp-metric-val" id="tp-worker-val">Online</div>
+        </div>
+      </div>
+      <div class="tp-section-title">Quick Health Actions</div>
+      <div class="tp-actions-row">
+        <button type="button" class="tp-action-btn" id="tp-btn-docker">
+          <span>🐳</span> Docker Containers
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Main chat column -->
+    <main class="chat-col" id="drop-zone-target">
+      <!-- Drag & drop overlay (only appears while dragging files over the window) -->
+      <div class="drop-overlay" id="drop-overlay">
+        <div class="drop-card">
+          <div class="drop-icon">⇪</div>
+          <div class="drop-text">Drop files or images here</div>
+        </div>
+      </div>
+
+      <section class="chat" id="chat">
+        <div class="msgs" id="msgs">
+          <div class="welcome" id="welcome">
+            <div class="wlcm-title" id="wlcm-title"><span class="wlcm-greet" id="wlcm-greet">Good evening</span><span class="wlcm-soft" id="wlcm-name">, Milind</span></div>
+            <p class="wlcm-subtitle" id="wlcm-subtitle">How can I help you today?</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Floating Scroll-To-Bottom Pill -->
+      <button type="button" class="scroll-bottom-btn" id="scroll-bottom-btn" style="display:none" title="Scroll to latest message" aria-label="Scroll to bottom">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+        <span>Latest</span>
+        <span class="scroll-new-badge" id="scroll-new-badge" style="display:none">●</span>
+      </button>
+
+      <!-- Pending-action confirmation (mutating tools checkpoint) -->
+      <div class="confirm-dock" id="confirm-dock" hidden>
+        <div class="cd-ic" id="confirm-ic">⚠</div>
+        <div class="cd-body">
+          <div class="cd-title" id="confirm-title">Approve action?</div>
+          <div class="cd-msg" id="confirm-msg"></div>
+        </div>
+        <div class="cd-actions">
+          <button id="confirm-deny" class="cd-deny">Not now</button>
+          <button id="confirm-approve" class="cd-approve">Approve</button>
+        </div>
+      </div>
+
+      <section class="input-area">
+        <div class="composer">
+          <div class="attachment-tray" id="attachment-tray" style="display:none"></div>
+          <div class="composer-row">
+            <button class="cbtn" id="attach-btn" title="Attach file or image" aria-label="Attach">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input type="file" id="file-input" hidden multiple />
+            <textarea id="inp" rows="1" placeholder="Message Zenith…" autocomplete="off" autofocus></textarea>
+            <button class="cbtn" id="mic-btn" title="Voice … hold space to talk" aria-label="Voice">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            </button>
+            <button class="send" id="send-btn" title="Send" aria-label="Send">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Sidebar backdrop overlay for mobile -->
+    <div class="side-backdrop" id="side-backdrop"></div>
+
+    <!-- Floating reopen button (mobile only) -->
+    <button class="daybook-fab" id="daybook-fab" title="Open Daybook" aria-label="Open Daybook">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>
+      <span>Daybook</span>
+    </button>
+
+    <!-- Right sidebar -->
+    <aside class="side" id="sidebar">
+      <div class="side-hdr">
+        <div class="side-tabs" role="tablist">
+          <button type="button" class="side-tab active" id="tab-agenda" data-tab="agenda">Agenda</button>
+          <button type="button" class="side-tab" id="tab-notes" data-tab="notes">Notes</button>
+          <button type="button" class="side-tab" id="tab-homelab" data-tab="homelab">Homelab</button>
+        </div>
+        <button class="side-close-btn" id="side-close-btn" title="Close sidebar">✕</button>
+      </div>
+      <div class="side-scroll">
+        <!-- Tab 1: Agenda -->
+        <div class="side-tab-pane active" id="pane-agenda">
+          <div class="panel" id="agenda-panel">
+            <div class="panel-head-row">
+              <div class="panel-title">To-dos</div>
+              <span class="panel-badge" id="todo-count-badge">0</span>
+            </div>
+            <div class="agenda-list" id="todo-list"><div class="placeholder">None.</div></div>
+            <form class="side-inline-form" id="quick-todo-form" onsubmit="return false;">
+              <input type="text" id="quick-todo-input" class="side-inline-input" placeholder="+ Add a to-do…" autocomplete="off" />
+              <button type="submit" class="side-inline-submit" id="quick-todo-submit">Add</button>
+            </form>
+
+            <div class="panel-title sub" style="margin-top:16px">Coming up (this month)</div>
+            <div class="agenda-list" id="event-list"><div class="placeholder">Nothing scheduled for this month.</div></div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Notes -->
+        <div class="side-tab-pane" id="pane-notes" style="display:none">
+          <div class="panel">
+            <div class="panel-head-row">
+              <div class="panel-title">Scratchpad &amp; Notes</div>
+              <span class="panel-badge" id="notes-count-badge">0</span>
+            </div>
+            <form class="side-inline-form" id="quick-note-form" onsubmit="return false;">
+              <input type="text" id="quick-note-input" class="side-inline-input" placeholder="+ Jot quick note…" autocomplete="off" />
+              <button type="submit" class="side-inline-submit" id="quick-note-submit">Save</button>
+            </form>
+            <div class="agenda-list" id="notes-list"><div class="placeholder">None yet.</div></div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Homelab -->
+        <div class="side-tab-pane" id="pane-homelab" style="display:none">
+          <div class="panel">
+            <div class="panel-head-row">
+              <div class="panel-title">Homelab Services</div>
+              <button type="button" class="side-refresh-btn" id="homelab-refresh-btn" title="Refresh service status">↻</button>
+            </div>
+            <div class="homelab-services-list" id="homelab-services-list">
+              <div class="homelab-item">
+                <div class="hl-item-left">
+                  <span class="hl-dot ok"></span>
+                  <div class="hl-name">Zenith Engine</div>
+                </div>
+                <span class="hl-status-pill ok">Running</span>
+              </div>
+              <div class="homelab-item">
+                <div class="hl-item-left">
+                  <span class="hl-dot ok"></span>
+                  <div class="hl-name">Docker Subsystem</div>
+                </div>
+                <span class="hl-status-pill ok">Ready</span>
+              </div>
+              <div class="homelab-item">
+                <div class="hl-item-left">
+                  <span class="hl-dot ok"></span>
+                  <div class="hl-name">Cloudflare Tunnel</div>
+                </div>
+                <span class="hl-status-pill ok">Active</span>
+              </div>
+              <div class="homelab-item">
+                <div class="hl-item-left">
+                  <span class="hl-dot ok"></span>
+                  <div class="hl-name">Autonomous Worker</div>
+                </div>
+                <span class="hl-status-pill ok">Standby</span>
+              </div>
+            </div>
+            <div class="homelab-quick-actions">
+              <button type="button" class="hl-action-card" id="hl-check-all-btn">
+                <span class="hl-action-icon">⚡</span>
+                <span class="hl-action-label">Run System Status Check</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Live Terminal Drawer -->
+<div class="term-drawer" id="term-drawer" style="display:none">
+  <div class="term-hdr">
+    <div class="term-title">
+      <span class="term-dot"></span> WHAT ZENITH RAN
+    </div>
+    <div class="term-actions">
+      <label class="term-autoscroll"><input type="checkbox" id="term-autoscroll-chk" checked /> auto-scroll</label>
+      <button class="term-btn-small" id="term-clear-btn" title="Clear logs">clear</button>
+      <button class="term-close" id="term-close-btn" title="Close drawer">✕</button>
+    </div>
+  </div>
+  <div class="term-body" id="term-body">
+    <div class="term-line sys">[SYSTEM] execution log initialized. ready.</div>
+  </div>
+</div>
+
+<!-- Voice Modal Overlay — Zenith stays in voice mode until you finish the turn. -->
+<div class="vmod" id="vmod" aria-label="Voice">
+  <button class="v-close" id="v-close" title="Close voice (Esc)" aria-label="Close voice">✕</button>
+  <div class="v-body">
+    <div class="orb-wrap" id="orb-wrap" role="button" tabindex="0" aria-label="Talk to Zenith">
+      <canvas id="orb-canvas" width="300" height="300"></canvas>
+    </div>
+    <div class="v-status" id="v-status">voice · G</div>
+    <div class="v-text" id="v-text">speak naturally — hold <b>space</b>, or click the orb.</div>
+  </div>
+</div>
+
+<!-- Command Palette Modal (⌘K / Ctrl+K) -->
+<div class="cmd-palette-backdrop" id="cmd-palette-modal" style="display:none" aria-modal="true" role="dialog">
+  <div class="cmd-palette-box">
+    <div class="cmd-search-wrap">
+      <svg class="cmd-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="cmd-palette-input" class="cmd-search-input" placeholder="Type a command or search actions…" autocomplete="off" spellcheck="false" />
+      <span class="cmd-esc-badge">ESC</span>
+    </div>
+    <div class="cmd-list" id="cmd-palette-list">
+      <!-- Dynamically populated and filtered -->
+    </div>
+    <div class="cmd-footer">
+      <span class="cmd-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span class="cmd-hint"><kbd>↵</kbd> select</span>
+      <span class="cmd-hint"><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- Integration Credentials Setup Modal -->
+<div class="cmd-palette-backdrop" id="intg-config-modal" style="display:none" aria-modal="true" role="dialog">
+  <div class="cmd-palette-box intg-modal-box">
+    <div class="intg-modal-header">
+      <h3 class="intg-modal-title" id="intg-modal-title">OAuth Setup Required</h3>
+      <button class="intg-modal-close" onclick="document.getElementById('intg-config-modal').style.display='none'">✕</button>
+    </div>
+    <div class="intg-modal-body">
+      <p class="intg-modal-desc" id="intg-modal-desc"></p>
+      <div class="intg-modal-fields" id="intg-modal-fields"></div>
+    </div>
+    <div class="intg-modal-footer">
+      <a id="intg-modal-dev-link" href="#" target="_blank" rel="noopener" class="intg-modal-link">Open Developer Portal ↗</a>
+      <div class="intg-modal-actions">
+        <button class="intg-btn intg-btn-secondary" onclick="document.getElementById('intg-config-modal').style.display='none'">Cancel</button>
+        <button class="intg-btn intg-btn-connect" id="intg-modal-save-btn">Save & Authorize</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Camera Live Preview & Visual Q&A Modal -->
+<div class="cam-modal" id="camera-modal" style="display:none" aria-label="Camera Live Vision">
+  <div class="cam-dialog">
+    <div class="cam-hdr">
+      <div class="cam-title">
+        <span class="cam-led" id="cam-led"></span>
+        <span class="cam-title-text">ZENITH VISION &amp; CAM</span>
+      </div>
+      <div class="cam-presence-badge" id="cam-presence-badge">
+        <span class="presence-dot"></span>
+        <span id="cam-presence-text">Detecting Presence...</span>
+      </div>
+      <button class="cam-close" id="camera-close-btn" title="Close camera (Esc)">✕</button>
+    </div>
+
+    <div class="cam-body">
+      <div class="cam-view-container">
+        <!-- Live Video Element / Snapshot Canvas -->
+        <video id="cam-video" autoplay playsinline muted style="display:none"></video>
+        <img id="cam-frame-img" alt="Camera Feed" style="display:none" />
+        <div class="cam-placeholder" id="cam-placeholder">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <p>Camera is currently standby</p>
+          <button type="button" class="cam-start-btn" id="cam-start-feed-btn">Activate Camera</button>
+        </div>
+        <div class="cam-overlay-hud">
+          <span class="cam-hud-tag" id="cam-hud-source">SOURCE: WEBCAM</span>
+          <span class="cam-hud-tag" id="cam-hud-gesture">GESTURE: NONE</span>
+        </div>
+      </div>
+
+      <div class="cam-controls">
+        <div class="cam-source-toggle">
+          <button type="button" class="cam-toggle-btn active" id="cam-src-webcam">Webcam</button>
+          <button type="button" class="cam-toggle-btn" id="cam-src-screen">Active Screen</button>
+        </div>
+        <div class="cam-quick-actions">
+          <button type="button" class="cam-action-chip" id="cam-act-qr">Scan QR Code</button>
+          <button type="button" class="cam-action-chip" id="cam-act-describe">Describe Scene</button>
+          <button type="button" class="cam-action-chip" id="cam-act-gesture">Detect Gestures</button>
+        </div>
+      </div>
+
+      <div class="cam-qa-box">
+        <input type="text" id="cam-qa-input" class="cam-qa-input" placeholder="Ask Zenith about what is visible..." />
+        <button type="button" class="cam-qa-submit" id="cam-qa-submit">Ask Vision</button>
+      </div>
+      <div class="cam-analysis-result" id="cam-analysis-result" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Unified Context, Activity & Privacy Drawer -->
+<div class="context-drawer" id="context-drawer" style="display:none">
+  <div class="ctx-hdr">
+    <div class="ctx-title">
+      <span class="ctx-dot"></span> OPERATING LAYER &amp; CONTEXT ENGINE
+    </div>
+    <div class="ctx-actions">
+      <button class="ctx-ghost-btn" id="ctx-ghost-toggle-btn" title="Toggle Ghost Mode">
+        <span class="ghost-indicator"></span>
+        <span id="ctx-ghost-label">Ghost Mode: OFF</span>
+      </button>
+      <button class="term-close" id="context-drawer-close-btn" title="Close panel">✕</button>
+    </div>
+  </div>
+
+  <div class="ctx-tabs">
+    <button type="button" class="ctx-tab active" data-tab="ctx-overview">Overview</button>
+    <button type="button" class="ctx-tab" data-tab="ctx-activity">ActivityWatch</button>
+    <button type="button" class="ctx-tab" data-tab="ctx-memory">Mem0 Memory</button>
+    <button type="button" class="ctx-tab" data-tab="ctx-privacy">Privacy Guard</button>
+  </div>
+
+  <div class="ctx-body">
+    <!-- Overview Tab -->
+    <div class="ctx-pane active" id="pane-ctx-overview">
+      <div class="ctx-card">
+        <div class="ctx-card-title">Active Window &amp; Workflow (Clippy Vision)</div>
+        <div class="ctx-workflow-box">
+          <div class="ctx-flow-item"><span class="flow-lbl">Application:</span> <span class="flow-val" id="ctx-app-val">--</span></div>
+          <div class="ctx-flow-item"><span class="flow-lbl">Window Title:</span> <span class="flow-val" id="ctx-title-val">--</span></div>
+          <div class="ctx-flow-item"><span class="flow-lbl">Workflow State:</span> <span class="flow-badge" id="ctx-workflow-val">STANDBY</span></div>
+        </div>
+      </div>
+
+      <div class="ctx-card">
+        <div class="ctx-card-title">Live Sensory Layer Status</div>
+        <div class="ctx-sensor-grid" id="ctx-sensor-grid">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ActivityWatch Tab -->
+    <div class="ctx-pane" id="pane-ctx-activity" style="display:none">
+      <div class="ctx-card">
+        <div class="ctx-card-hdr">
+          <div class="ctx-card-title">Activity Timeline &amp; Productivity</div>
+          <button type="button" class="ctx-mini-btn" id="ctx-act-refresh-btn">↻ Refresh</button>
+        </div>
+        <div class="ctx-stats-row" id="ctx-stats-row">
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-active">0m</span><span class="stat-lbl">Active Work</span></div>
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-idle">0m</span><span class="stat-lbl">Idle Time</span></div>
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-events">0</span><span class="stat-lbl">Events</span></div>
+        </div>
+        <div class="ctx-timeline-list" id="ctx-timeline-list">
+          <div class="placeholder">Loading ActivityWatch timeline...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mem0 Tab -->
+    <div class="ctx-pane" id="pane-ctx-memory" style="display:none">
+      <div class="ctx-card">
+        <div class="ctx-card-hdr">
+          <div class="ctx-card-title">Mem0 Durable Memories</div>
+          <div class="ctx-mem-filter">
+            <select id="ctx-mem-tier-sel" class="ctx-select">
+              <option value="">All Tiers</option>
+              <option value="preference">Preferences</option>
+              <option value="project">Projects</option>
+              <option value="workflow">Workflows</option>
+              <option value="decision">Decisions</option>
+            </select>
+          </div>
+        </div>
+        <div class="ctx-mem-add-form">
+          <input type="text" id="ctx-mem-add-input" class="ctx-input" placeholder="Add durable knowledge..." />
+          <select id="ctx-mem-add-tier" class="ctx-select">
+            <option value="preference">Preference</option>
+            <option value="project" selected>Project</option>
+            <option value="workflow">Workflow</option>
+            <option value="decision">Decision</option>
+          </select>
+          <button type="button" class="ctx-primary-btn" id="ctx-mem-add-btn">Remember</button>
+        </div>
+        <div class="ctx-memory-list" id="ctx-memory-list">
+          <div class="placeholder">Loading Mem0 memories...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Privacy Guard Tab -->
+    <div class="ctx-pane" id="pane-ctx-privacy" style="display:none">
+      <div class="ctx-card">
+        <div class="ctx-card-title">Sovereign Privacy Controls</div>
+        <div class="ctx-priv-toggle-list">
+          <div class="ctx-priv-item">
+            <div><strong>Screen Awareness (Clippy Vision)</strong><p class="priv-sub">Allow observing active application &amp; workflow context.</p></div>
+            <input type="checkbox" id="priv-chk-screen" checked />
+          </div>
+          <div class="ctx-priv-item">
+            <div><strong>ActivityWatch Timeline</strong><p class="priv-sub">Maintain local timeline of applications and documents.</p></div>
+            <input type="checkbox" id="priv-chk-activity" checked />
+          </div>
+          <div class="ctx-priv-item">
+            <div><strong>Camera Sensing</strong><p class="priv-sub">Allow webcam capture and visual question answering.</p></div>
+            <input type="checkbox" id="priv-chk-camera" checked />
+          </div>
+          <div class="ctx-priv-item">
+            <div><strong>Browser Automation</strong><p class="priv-sub">Allow Playwright and autonomous Browser Use navigation.</p></div>
+            <input type="checkbox" id="priv-chk-browser" checked />
+          </div>
+          <div class="ctx-priv-item">
+            <div><strong>Mem0 Memory Extraction</strong><p class="priv-sub">Allow saving long-term preferences and project knowledge.</p></div>
+            <input type="checkbox" id="priv-chk-memory" checked />
+          </div>
+        </div>
+        <div class="ctx-card-subhead">Protected Applications Blocklist</div>
+        <div class="ctx-blocklist-tags" id="ctx-blocklist-apps"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notifications container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/liquid-glass-shader.js?v=73"></script>
+<script src="/static/app.js?v=71"></script>
+</body>
+</html>

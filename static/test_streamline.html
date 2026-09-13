@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streamline Liquid Glass Shader Test v9 Responsive</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #030508; }
+  canvas { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: false, depth: false, powerPreference: "high-performance" });
+
+const vs = `
+  attribute vec2 a_pos;
+  void main() {
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`;
+
+const fs = `
+  precision highp float;
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec2 u_mouse;
+  uniform float u_reduced_motion;
+
+  mat2 rot(float a) {
+    float s = sin(a), c = cos(a);
+    return mat2(c, -s, s, c);
+  }
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+
+  // Smooth potential flow stream function with harmonic breathing
+  float evaluateStream(vec2 p, float t, out float chi) {
+    float th = -0.5585;
+    mat2 R = rot(th);
+    vec2 dp = R * p;
+    chi = dp.x;
+
+    float t1 = t * 0.12;
+    float t2 = t * 0.08;
+    float t3 = t * 0.15;
+
+    vec2 c1 = vec2(-0.32 + 0.10 * sin(t1), 0.44 + 0.07 * cos(t2));
+    vec2 c2 = vec2(0.40 + 0.09 * cos(t2 * 0.9), -0.08 + 0.08 * sin(t3));
+
+    float v1 = 0.28 * exp(-dot(p - c1, p - c1) * 2.2);
+    float v2 = -0.22 * exp(-dot(p - c2, p - c2) * 1.8);
+
+    float psi = dp.y + v1 + v2;
+    psi += 0.060 * sin(dp.x * 1.35 + t1) * exp(-dp.y * dp.y * 1.5);
+    psi += 0.035 * cos(dp.x * 2.40 - t2);
+
+    return psi;
+  }
+
+  void evaluateFluidRibbons(vec2 p, float t, float target1, float target2,
+                           out float h1, out float h2, 
+                           out float dist1, out float dist2, 
+                           out float width1, out float width2, 
+                           out float crestDist1, out float foldDist1,
+                           out float chi) {
+    float eps = 0.0035;
+    float chiX, chiY;
+    float psi = evaluateStream(p, t, chi);
+    float psiX = evaluateStream(p + vec2(eps, 0.0), t, chiX);
+    float psiY = evaluateStream(p + vec2(0.0, eps), t, chiY);
+
+    vec2 gradPsi = vec2(psiX - psi, psiY - psi) / eps;
+    float gradLen = max(0.001, length(gradPsi));
+
+    dist1 = (psi - target1) / gradLen;
+
+    width1 = 0.34 + 0.11 * sin(chi * 1.15 + sin(t * 0.10) * 0.4) + 0.05 * cos(chi * 2.2 - t * 0.06);
+    width1 = max(0.14, width1);
+
+    float s1 = dist1 / width1;
+    float s1Sq = s1 * s1;
+    float hBase1 = exp(-s1Sq * 3.4) * smoothstep(1.22, 0.45, abs(s1));
+
+    foldDist1 = dist1 - (-0.38 * width1);
+    float hFold1 = 0.28 * exp(-pow(s1 + 0.38, 2.0) * 22.0);
+
+    crestDist1 = dist1 - (0.08 * width1);
+    float hCrest1 = 0.38 * exp(-pow(s1 - 0.08, 2.0) * 16.0);
+
+    h1 = hBase1 + hFold1 + hCrest1;
+
+    dist2 = (psi - target2) / gradLen;
+    width2 = 0.22 + 0.07 * cos(chi * 1.30 - t * 0.11);
+    width2 = max(0.09, width2);
+
+    float s2 = dist2 / width2;
+    float s2Sq = s2 * s2;
+    h2 = exp(-s2Sq * 4.2) * smoothstep(1.20, 0.50, abs(s2));
+  }
+
+  void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+    vec2 p = uv + (u_mouse - 0.5) * 0.025;
+
+    float speed = (u_reduced_motion > 0.5) ? 0.015 : 0.12;
+    float t = u_time * speed;
+
+    // Aspect-ratio adaptive framing
+    float aspect = u_resolution.x / u_resolution.y;
+    float portraitElevate = max(0.0, (1.35 - aspect) * 0.38);
+    float target1 = 0.31 + portraitElevate;
+    float target2 = 0.61 + portraitElevate * 0.85;
+
+    // Evaluate ribbon geometry
+    float h1, h2, dist1, dist2, width1, width2, crestDist1, foldDist1, chi;
+    evaluateFluidRibbons(p, t, target1, target2, h1, h2, dist1, dist2, width1, width2, crestDist1, foldDist1, chi);
+
+    float hComposite = h1 * 1.0 + h2 * 0.42;
+
+    float eps = 0.0035;
+    float h1X, h2X, d1X, d2X, w1X, w2X, cr1X, fl1X, chiX;
+    float h1Y, h2Y, d1Y, d2Y, w1Y, w2Y, cr1Y, fl1Y, chiY;
+    evaluateFluidRibbons(p + vec2(eps, 0.0), t, target1, target2, h1X, h2X, d1X, d2X, w1X, w2X, cr1X, fl1X, chiX);
+    evaluateFluidRibbons(p + vec2(0.0, eps), t, target1, target2, h1Y, h2Y, d1Y, d2Y, w1Y, w2Y, cr1Y, fl1Y, chiY);
+
+    float hCompX = h1X * 1.0 + h2X * 0.42;
+    float hCompY = h1Y * 1.0 + h2Y * 0.42;
+
+    vec2 grad = vec2(hComposite - hCompX, hComposite - hCompY) / eps;
+    vec3 N = normalize(vec3(grad * 0.55, 1.0));
+    vec3 V = vec3(0.0, 0.0, 1.0);
+    vec3 R = reflect(-V, N);
+
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = pow(1.0 - NdotV, 2.7);
+
+    vec3 L1 = normalize(vec3(-0.45, 0.72, 0.68));
+    vec3 H1 = normalize(L1 + V);
+    float NdotH1 = max(0.0, dot(N, H1));
+
+    float specBroad = pow(NdotH1, 14.0) * 0.40;
+    float specSharp = pow(NdotH1, 75.0) * 1.65;
+    float specChromeGlint = pow(NdotH1, 380.0) * 3.80;
+
+    vec3 L2 = normalize(vec3(0.68, -0.52, 0.50));
+    vec3 H2 = normalize(L2 + V);
+    float NdotH2 = max(0.0, dot(N, H2));
+    float specRim = pow(NdotH2, 22.0) * 0.85;
+
+    float spineWidth1 = width1 * 0.030;
+    float spineWidth2 = width2 * 0.032;
+    float foldWidth1  = width1 * 0.026;
+
+    float chromeSpine1 = exp(-crestDist1 * crestDist1 / (spineWidth1 * spineWidth1));
+    float chromeSoft1  = exp(-crestDist1 * crestDist1 / (spineWidth1 * spineWidth1 * 8.0));
+
+    float chromeFold1  = exp(-foldDist1 * foldDist1 / (foldWidth1 * foldWidth1));
+    float chromeFoldSoft1 = exp(-foldDist1 * foldDist1 / (foldWidth1 * foldWidth1 * 7.0));
+
+    float chromeSpine2 = exp(-dist2 * dist2 / (spineWidth2 * spineWidth2));
+    float chromeSoft2  = exp(-dist2 * dist2 / (spineWidth2 * spineWidth2 * 8.0));
+
+    float glintWave = 0.82 + 0.45 * sin(chi * 3.8 - t * 0.24);
+    chromeSpine1 *= glintWave;
+
+    float rimAngle = atan(grad.y, grad.x);
+    float iridPhase = rimAngle * 1.50 + fresnel * 4.6 + chi * 0.70;
+
+    vec3 colLavender  = vec3(0.84, 0.78, 0.98);
+    vec3 colViolet    = vec3(0.55, 0.28, 0.92);
+    vec3 colWarmAmber = vec3(0.98, 0.65, 0.24);
+
+    vec3 iridColor = mix(
+      mix(colViolet, colLavender, 0.5 + 0.5 * sin(iridPhase)),
+      colWarmAmber,
+      clamp(0.5 + 0.5 * cos(iridPhase + 1.2), 0.0, 1.0)
+    );
+    float s1Norm = abs(dist1 / width1);
+    float edgeThinMask = smoothstep(0.55, 0.98, s1Norm) * smoothstep(0.18, 0.85, fresnel);
+    vec3 edgeIridescence = iridColor * edgeThinMask * 1.40;
+
+    vec3 bgDeep = vec3(0.012, 0.020, 0.032);
+    vec3 bgMid  = vec3(0.026, 0.036, 0.058);
+    vec3 bg     = mix(bgDeep, bgMid, uv.y * 0.5 + 0.5);
+
+    vec3 colDeepNavy     = vec3(0.006, 0.022, 0.095);
+    vec3 colRoyalBlue    = vec3(0.015, 0.090, 0.320);
+    vec3 colElectricBlue = vec3(0.035, 0.300, 0.860);
+    vec3 colCyanGlow     = vec3(0.090, 0.680, 0.950);
+    vec3 colWhiteBlue    = vec3(0.900, 0.955, 1.000);
+    vec3 colPureWhite    = vec3(1.000, 1.000, 1.000);
+
+    float density = clamp(hComposite * 1.15, 0.0, 1.0);
+    vec3 liquid = mix(bg, colDeepNavy, smoothstep(0.02, 0.26, density));
+    liquid = mix(liquid, colRoyalBlue, smoothstep(0.20, 0.55, density) * 0.92);
+    liquid = mix(liquid, colElectricBlue, smoothstep(0.48, 0.78, density) * 0.95);
+    liquid = mix(liquid, colCyanGlow, smoothstep(0.70, 0.95, density) * 0.85);
+
+    float sss = smoothstep(0.15, 0.60, h1) * (1.0 - smoothstep(0.60, 0.92, h1));
+    float aura = exp(-dist1 * dist1 * 12.0) * 0.30 + exp(-dist2 * dist2 * 16.0) * 0.18;
+    liquid += colCyanGlow * (sss * 0.40 + aura);
+    liquid += colElectricBlue * fresnel * density * 0.50;
+    liquid += edgeIridescence;
+
+    vec3 spec = colPureWhite * (specSharp + specChromeGlint) 
+              + colCyanGlow * specBroad 
+              + colElectricBlue * specRim;
+    spec *= smoothstep(0.06, 0.42, density);
+    liquid += spec;
+
+    vec3 chromeLine = colWhiteBlue * (chromeSoft1 * 0.55 + chromeFoldSoft1 * 0.38 + chromeSoft2 * 0.32)
+                    + colPureWhite * (chromeSpine1 * 1.65 + chromeFold1 * 0.90 + chromeSpine2 * 0.90);
+    liquid += chromeLine * smoothstep(0.08, 0.45, density);
+
+    float grooveDist = abs(dist1 - dist2);
+    float ao = smoothstep(0.02, 0.22, grooveDist);
+    liquid = mix(liquid * 0.70, liquid, ao);
+
+    float mask = smoothstep(0.010, 0.20, density);
+    vec3 finalColor = mix(bg, liquid, mask);
+
+    float vignette = 1.0 - smoothstep(0.75, 1.55, length(uv * vec2(0.9, 1.0)));
+    finalColor = mix(bgDeep, finalColor, vignette * 0.20 + 0.80);
+
+    finalColor = (finalColor * (1.0 + finalColor * 0.20)) / (1.0 + finalColor);
+
+    float dither = (hash(gl_FragCoord.xy + fract(u_time * 0.01)) - 0.5) / 255.0;
+    finalColor += dither;
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+function createShader(gl, type, source) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, source);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const p = gl.createProgram();
+gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs));
+gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(p);
+gl.useProgram(p);
+
+const posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+const posLoc = gl.getAttribLocation(p, "a_pos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+const resLoc = gl.getUniformLocation(p, "u_resolution");
+const timeLoc = gl.getUniformLocation(p, "u_time");
+const mouseLoc = gl.getUniformLocation(p, "u_mouse");
+const motionLoc = gl.getUniformLocation(p, "u_reduced_motion");
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener("resize", resize);
+
+const params = new URLSearchParams(window.location.search);
+const fixedTime = params.get("t") ? parseFloat(params.get("t")) : null;
+
+if (fixedTime !== null) {
+  gl.uniform2f(resLoc, canvas.width, canvas.height);
+  gl.uniform1f(timeLoc, fixedTime);
+  gl.uniform2f(mouseLoc, 0.5, 0.5);
+  gl.uniform1f(motionLoc, 0.0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+} else {
+  let start = performance.now();
+  function loop(now) {
+    const elapsed = (now - start) / 1000;
+    gl.uniform2f(resLoc, canvas.width, canvas.height);
+    gl.uniform1f(timeLoc, elapsed);
+    gl.uniform2f(mouseLoc, 0.5, 0.5);
+    gl.uniform1f(motionLoc, 0.0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

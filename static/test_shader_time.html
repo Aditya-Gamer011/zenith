@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zenith Liquid Glass Shader Prototype v2</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #030508; }
+  canvas { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: false, depth: false, powerPreference: "high-performance" });
+
+const vsSource = `
+  attribute vec2 a_pos;
+  void main() {
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`;
+
+const fsSource = `
+  precision highp float;
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec2 u_mouse;
+  uniform float u_reduced_motion;
+
+  // 2D Rotation
+  mat2 rot(float a) {
+    float s = sin(a), c = cos(a);
+    return mat2(c, -s, s, c);
+  }
+
+  // Smooth sinusoidal hash for subtle blue-noise dither
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+
+  // Evaluates multi-layered liquid glass and fluid chrome surfaces
+  // Perfectly bounded standing harmonics: ribbons morph and breathe without conveyor-belt drift.
+  void evaluateFluid(vec2 p, float t, out float h1, out float h2, out float crest1, out float crest2, out float s1, out float s2) {
+    // Non-commensurate harmonic clocks
+    float t1 = t * 0.16;
+    float t2 = t * 0.11;
+    float t3 = t * 0.20;
+    float t4 = t * 0.07;
+
+    // Smooth bounded hydrodynamic domain warping
+    vec2 warp1 = vec2(
+      sin(p.y * 1.5 + sin(t1) * 0.8) * 0.18 + cos(p.x * 1.1 + t2) * 0.10,
+      cos(p.x * 1.3 + cos(t2) * 0.7) * 0.15 + sin(p.y * 1.2 - t3) * 0.08
+    );
+
+    vec2 warp2 = vec2(
+      sin((p.x + warp1.x) * 1.6 + cos(t3) * 0.6 + 1.4) * 0.10,
+      cos((p.y + warp1.y) * 1.4 + sin(t1) * 0.6 + 2.2) * 0.08
+    );
+
+    vec2 q = p + warp1 * 0.85 + warp2 * 0.55;
+
+    // ── LAYER 1: Sovereign Primary Liquid Chrome & Glass Ribbon ──────────
+    // Sweeping majestic diagonal S-curve
+    float spine1 = 0.36 * sin(q.x * 0.85 + sin(t1 * 0.7) * 0.35) 
+                 + 0.15 * cos(q.x * 1.75 - cos(t2 * 0.6) * 0.25)
+                 + 0.05 * sin(q.x * 2.80 + t3 * 0.4);
+
+    // Position ribbon in upper-center & right quadrants, leaving bottom-center pure obsidian
+    float dist1 = q.y - spine1 - 0.22;
+
+    // Dynamic width breathing along the ribbon
+    float width1 = 0.42 + 0.15 * sin(q.x * 0.70 + sin(t2) * 0.4) 
+                        + 0.06 * cos(q.x * 1.5 - t1 * 0.5);
+    width1 = max(0.16, width1);
+
+    s1 = dist1 / width1;
+    float s1Abs = abs(s1);
+    
+    // Smooth bell-shaped 3D volume profile with soft edge falloff
+    h1 = exp(-s1 * s1 * 2.8) * smoothstep(1.35, 0.45, s1Abs);
+
+    // Razor-sharp polished chrome crest along the spine
+    crest1 = exp(-s1 * s1 * 54.0);
+
+    // ── LAYER 2: Secondary Translucent Azure Glass Fold ───────────────────
+    float spine2 = -0.30 * cos(q.x * 0.95 + sin(t3 * 0.6) * 0.35 + 1.2) 
+                  + 0.12 * sin(q.x * 1.90 - t4) 
+                  + 0.04 * cos(q.x * 3.10 + t2 * 0.3);
+
+    float dist2 = q.y - spine2 + 0.26;
+    float width2 = 0.32 + 0.12 * cos(q.x * 0.85 - t2 * 0.4);
+    width2 = max(0.12, width2);
+
+    s2 = dist2 / width2;
+    float s2Abs = abs(s2);
+    h2 = exp(-s2 * s2 * 3.6) * smoothstep(1.30, 0.40, s2Abs);
+    crest2 = exp(-s2 * s2 * 42.0);
+  }
+
+  void main() {
+    // Centered aspect coordinates
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+
+    // Diagonal tilt (-34 degrees) for cinematic diagonal sweep across widescreen
+    float angle = -0.593412; // -34 deg
+    mat2 rotM = rot(angle);
+    vec2 p = rotM * uv;
+
+    // Subtle parallax response to mouse cursor
+    p += (u_mouse - 0.5) * 0.030;
+
+    // Fluid clock
+    float speed = (u_reduced_motion > 0.5) ? 0.015 : 0.12;
+    float t = u_time * speed;
+
+    // Evaluate layered height fields
+    float h1, h2, crest1, crest2, s1, s2;
+    evaluateFluid(p, t, h1, h2, crest1, crest2, s1, s2);
+
+    // Composite height field for surface normals
+    float hComposite = h1 * 1.0 + h2 * 0.50;
+
+    // High-precision finite differences for surface normals
+    float eps = 0.0035;
+    float h1X, h2X, c1X, c2X, s1X, s2X;
+    float h1Y, h2Y, c1Y, c2Y, s1Y, s2Y;
+    evaluateFluid(p + vec2(eps, 0.0), t, h1X, h2X, c1X, c2X, s1X, s2X);
+    evaluateFluid(p + vec2(0.0, eps), t, h1Y, h2Y, c1Y, c2Y, s1Y, s2Y);
+
+    float hCompX = h1X * 1.0 + h2X * 0.50;
+    float hCompY = h1Y * 1.0 + h2Y * 0.50;
+
+    vec2 grad = vec2(hComposite - hCompX, hComposite - hCompY) / eps;
+    vec3 N = normalize(vec3(grad * 0.48, 1.0));
+    vec3 V = vec3(0.0, 0.0, 1.0);
+
+    // ── LIGHTING & SPECULAR OPTICS ────────────────────────────────────────
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = pow(1.0 - NdotV, 2.6);
+
+    // Key Light 1: Studio overhead cold softbox & chrome reflection (top-left)
+    vec3 L1 = normalize(vec3(-0.45, 0.75, 0.70));
+    vec3 H1 = normalize(L1 + V);
+    float NdotH1 = max(0.0, dot(N, H1));
+
+    float specBroad = pow(NdotH1, 16.0) * 0.45;
+    float specSharp = pow(NdotH1, 85.0) * 1.35;
+    float specChromeGlint = pow(NdotH1, 340.0) * 2.40;
+
+    // Fill Light 2: Electric-cyan backlight & edge sheen (bottom-right)
+    vec3 L2 = normalize(vec3(0.68, -0.52, 0.50));
+    vec3 H2 = normalize(L2 + V);
+    float NdotH2 = max(0.0, dot(N, H2));
+    float specRim = pow(NdotH2, 24.0) * 0.70;
+
+    // Thin-film chromatic dispersion along refractive glass rims
+    float rimAngle = atan(grad.y, grad.x);
+    float dispersionPhase = rimAngle * 1.45 + fresnel * 4.2 + p.x * 0.60;
+
+    vec3 colLavender  = vec3(0.78, 0.72, 0.96);
+    vec3 colViolet    = vec3(0.48, 0.26, 0.85);
+    vec3 colWarmAmber = vec3(0.98, 0.60, 0.22);
+
+    vec3 iridColor = mix(
+      mix(colViolet, colLavender, 0.5 + 0.5 * sin(dispersionPhase)),
+      colWarmAmber,
+      clamp(0.5 + 0.5 * cos(dispersionPhase + 1.15), 0.0, 1.0)
+    );
+    float thinEdge = smoothstep(0.16, 0.75, fresnel) * smoothstep(0.06, 0.50, length(grad) * 0.08);
+    vec3 edgeIridescence = iridColor * thinEdge * 0.65;
+
+    // ── COLOR PALETTE & COMPOSITING ──────────────────────────────────────
+    // Obsidian Canvas (#030508 to #080B12)
+    vec3 bgDeep = vec3(0.012, 0.020, 0.032);
+    vec3 bgMid  = vec3(0.028, 0.038, 0.062);
+    vec3 bg     = mix(bgDeep, bgMid, uv.y * 0.5 + 0.5);
+
+    // Luxury Fluid Palette
+    vec3 colDeepNavy     = vec3(0.010, 0.035, 0.125);
+    vec3 colRoyalBlue    = vec3(0.022, 0.115, 0.380);
+    vec3 colElectricBlue = vec3(0.045, 0.320, 0.860);
+    vec3 colCyanGlow     = vec3(0.110, 0.700, 0.960);
+    vec3 colWhiteBlue    = vec3(0.880, 0.940, 1.000);
+    vec3 colPureWhite    = vec3(1.000, 1.000, 1.000);
+
+    // Layer 1: Voluminous Deep Navy Translucent Body
+    // Density represents thickness of the liquid glass
+    float density = clamp(hComposite * 1.15, 0.0, 1.0);
+    
+    // Beer's law absorption: thin fluid is cyan/electric, thick fluid is deep royal/navy
+    vec3 liquid = mix(bg, colDeepNavy, smoothstep(0.03, 0.25, density));
+    liquid = mix(liquid, colRoyalBlue, smoothstep(0.18, 0.50, density) * 0.85);
+    liquid = mix(liquid, colElectricBlue, smoothstep(0.35, 0.72, density) * 0.88);
+    liquid = mix(liquid, colCyanGlow, smoothstep(0.55, 0.90, density) * 0.82);
+
+    // Luminous White-Blue Ribbon Spine (Reflective core)
+    float core1 = smoothstep(0.62, 0.98, h1);
+    liquid = mix(liquid, colWhiteBlue, core1 * 0.85);
+    liquid = mix(liquid, colPureWhite, crest1 * 0.90);
+
+    // Secondary Glass Fold (Ribbon 2)
+    float foldGlow = smoothstep(0.58, 0.96, h2);
+    liquid = mix(liquid, mix(colWhiteBlue, colCyanGlow, 0.35), foldGlow * 0.55);
+    liquid = mix(liquid, colPureWhite, crest2 * 0.70);
+
+    // Internal Caustic / Subsurface Luminescence
+    float sss = smoothstep(0.10, 0.55, h1) * (1.0 - smoothstep(0.55, 0.90, h1));
+    liquid += colCyanGlow * sss * 0.45;
+    liquid += colElectricBlue * fresnel * density * 0.55;
+    liquid += edgeIridescence;
+
+    // Specular Chrome Reflections
+    vec3 spec = colPureWhite * (specSharp + specChromeGlint) 
+              + colCyanGlow * specBroad 
+              + colElectricBlue * specRim;
+    spec *= smoothstep(0.08, 0.45, density);
+    liquid += spec;
+
+    // Contrast Mask: Pure black outside the fluid manifold
+    float mask = smoothstep(0.01, 0.22, density);
+    vec3 finalColor = mix(bg, liquid, mask);
+
+    // Vignette
+    float vignette = 1.0 - smoothstep(0.75, 1.55, length(uv * vec2(0.9, 1.0)));
+    finalColor = mix(bgDeep, finalColor, vignette * 0.20 + 0.80);
+
+    // Filmic Tonemapping (smooth highlight compression)
+    finalColor = (finalColor * (1.0 + finalColor * 0.20)) / (1.0 + finalColor);
+
+    // Blue-Noise Dither
+    float dither = (hash(gl_FragCoord.xy + fract(u_time * 0.01)) - 0.5) / 255.0;
+    finalColor += dither;
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(shader));
+    return null;
+  }
+  return shader;
+}
+
+const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+const program = gl.createProgram();
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
+gl.linkProgram(program);
+
+const posLoc = gl.getAttribLocation(program, "a_pos");
+const resLoc = gl.getUniformLocation(program, "u_resolution");
+const timeLoc = gl.getUniformLocation(program, "u_time");
+const mouseLoc = gl.getUniformLocation(program, "u_mouse");
+const motionLoc = gl.getUniformLocation(program, "u_reduced_motion");
+
+const posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener("resize", resize);
+
+const params = new URLSearchParams(window.location.search);
+const fixedTime = params.get("t") ? parseFloat(params.get("t")) : null;
+
+if (fixedTime !== null) {
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(resLoc, canvas.width, canvas.height);
+  gl.uniform1f(timeLoc, fixedTime);
+  gl.uniform2f(mouseLoc, 0.5, 0.5);
+  gl.uniform1f(motionLoc, 0.0);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+} else {
+  let start = performance.now();
+  function loop(now) {
+    const elapsed = (now - start) / 1000;
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform2f(resLoc, canvas.width, canvas.height);
+    gl.uniform1f(timeLoc, elapsed);
+    gl.uniform2f(mouseLoc, 0.5, 0.5);
+    gl.uniform1f(motionLoc, 0.0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
