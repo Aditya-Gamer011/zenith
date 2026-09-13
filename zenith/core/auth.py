@@ -48,7 +48,7 @@ def query_axiom_role(identifier: str) -> str | None:
     db_candidates = [
         settings.axiom_db_path,
         "/app/axiom_prisma/dev.db",
-        "/home/singh/Desktop/Axiom/prisma/dev.db",
+        str(Path.home() / "Desktop" / "Axiom" / "prisma" / "dev.db"),
         str(Path(__file__).resolve().parents[3] / "Axiom" / "prisma" / "dev.db"),
     ]
     for db_path in db_candidates:

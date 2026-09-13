@@ -33,7 +33,7 @@ QBITTORRENT_URL = f"http://{_HOST}:8080"
 SEERR_URL = f"http://{_HOST}:5055"
 UPTIME_KUMA_URL = f"http://{_HOST}:3001"
 
-CF_CONFIG_FILE = Path(os.environ.get("CF_CONFIG_PATH", "/home/singh/.cloudflared/config.yml"))
+CF_CONFIG_FILE = Path(os.environ.get("CF_CONFIG_PATH", Path.home() / ".cloudflared" / "config.yml"))
 
 
 # ── 1. Media Search & Download (Sonarr / Radarr / Seerr) ────────────────────
@@ -307,7 +307,7 @@ async def tunnel_status() -> str:
 async def tunnel_add_route(subdomain: str, local_port: int) -> str:
     """Add a new ingress subdomain route to Cloudflare Tunnel (e.g. app.agm.quest -> 8000) and restart cloudflared."""
     if not CF_CONFIG_FILE.exists():
-        return "[tunnel] Config file /home/singh/.cloudflared/config.yml not found."
+        return f"[tunnel] Config file {CF_CONFIG_FILE} not found."
 
     subdomain = subdomain.lower().strip().replace("https://", "").replace("http://", "")
     if not subdomain.endswith(".agm.quest"):

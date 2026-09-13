@@ -1,9 +1,8 @@
 """Zenith × Antigravity worker — local HTTP API (REST, no auth on loopback).
 
-Zenith (the container) reaches the worker over 127.0.0.1:8022. The worker runs
-as the `singh` user on the Pi host via systemd (zenith-worker.service), because
-the Antigravity CLI (`agy`) authenticates with the user's Google login in
-~/.gemini.
+Zenith reaches the worker over 127.0.0.1:8022. The worker runs
+as the host user on the host machine (so the Antigravity CLI
+authenticates with the user's Google login in ~/.gemini).
 
 Endpoints
 ---------
@@ -23,7 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -82,12 +83,15 @@ async def chat_endpoint(request: Request):
         "--dangerously-skip-permissions",
     ]
 
+    ws_dir = os.environ.get("ZENITH_WORKSPACE") or str(Path.home() / "zenith-workspaces" / "main")
+    os.makedirs(ws_dir, exist_ok=True)
+
     async def event_generator():
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd="/home/singh/peacos-workspaces/zenith-main",
+            cwd=ws_dir,
         )
         if proc.stdout:
             while True:

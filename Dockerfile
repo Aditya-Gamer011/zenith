@@ -1,49 +1,64 @@
-# Zenith — runtime image
+# Zenith — Autonomous AI Operating Layer
+# Production Multi-Stage Container Image
 FROM python:3.13-slim
 
 WORKDIR /app
 
+# Python runtime optimization & headless browser settings
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    HOME=/home/zenith \
+    HOST=0.0.0.0 \
+    PORT=8005 \
+    ZENITH_PORT=8005
 
-# System deps: curl (healthcheck), git/gh (GitHub tools), docker CLI (homelab),
-# ffmpeg + espeak-ng + flac (voice STT: normalize browser capture → 16k WAV).
+# System dependencies:
+# - curl: container healthcheck & API readiness polling
+# - git, ca-certificates, gnupg: secure repo operations
+# - ffmpeg, espeak-ng, flac: voice STT/TTS normalization
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
     gnupg \
-    docker.io \
     ffmpeg \
     espeak-ng \
     flac \
-    && rm -rf /var/lib/apt/lists/* \
-    # GitHub CLI (latest release from GitHub's own apt repo)
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-       | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-       | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends gh \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Create dedicated non-root system user and group (Least Privilege Security)
+RUN groupadd -g 10001 zenith && \
+    useradd -u 10001 -g zenith -m -s /bin/bash zenith
+
+# Install Python application dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright browsers (Chromium headless shell — no full UI needed)
-RUN python -m playwright install chromium --with-deps
+# Install Playwright browser dependencies and Chromium headless binary
+RUN mkdir -p /ms-playwright && \
+    python -m playwright install chromium --with-deps && \
+    chmod -R 777 /ms-playwright
 
-# App code
+# Copy application source tree
 COPY zenith ./zenith
 COPY run.py .
 COPY static ./static
 COPY docs ./docs
 
-# Runtime data (SQLite, screenshots, generated files) lives in a volume
-RUN mkdir -p /app/data /app/static/screenshots /tmp/zenith-files
+# Set up runtime data directories with strict non-root ownership
+RUN mkdir -p /app/data /app/static/screenshots /tmp/zenith-files && \
+    chown -R zenith:zenith /app /tmp/zenith-files
 
+# Switch to non-root execution
+USER zenith
+
+# Service port
 EXPOSE 8005
 
-# Entrypoint
+# Automated container healthcheck
+HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8005/api/health || exit 1
+
+# Launch Zenith Cognitive Operating Layer
 CMD ["python", "run.py"]

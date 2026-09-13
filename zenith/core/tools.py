@@ -1179,8 +1179,8 @@ async def tool_vercel_env_list(project: str) -> str:
 
 
 # ── Antigravity worker tools ──────────────────────────────────────────────────
-# These proxy to the zenith-worker REST API on 127.0.0.1:8022 (a separate systemd
-# service running as `singh`, which owns the Antigravity CLI auth). Non-blocking:
+# These proxy to the zenith-worker REST API on 127.0.0.1:8022 (a separate background
+# service running on the host, which owns the Antigravity CLI auth). Non-blocking:
 # submit returns immediately with a task id; the worker runs the long task in the
 # background and Zenith polls it.
 

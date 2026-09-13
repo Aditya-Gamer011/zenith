@@ -46,6 +46,7 @@ Unlike chatbots that sit passively waiting for questions, Zenith actively mainta
 
 Comprehensive guides and architectural specifications are located in [`docs/`](./docs):
 
+- **[Unified Bootstrapper Guide (`docs/BOOTSTRAPPER.md`)](./docs/BOOTSTRAPPER.md)**: Single-command cross-platform installer, 8-stage pipeline, system profile generation, and Docker orchestration.
 - **[System Architecture & Overview (`docs/SYSTEM_OVERVIEW.md`)](./docs/SYSTEM_OVERVIEW.md)**: Deep dive into the FastAPI server, ReAct orchestrator loop, SQLite persistence, proactive background daemons, and multi-model failover.
 - **[Complete Tools Reference (`docs/TOOLS_REFERENCE.md`)](./docs/TOOLS_REFERENCE.md)**: Schemas and parameter definitions for all 170+ built-in tools.
 - **[Deployment & Getting Live (`docs/DEPLOYMENT_AND_SETUP.md`)](./docs/DEPLOYMENT_AND_SETUP.md)**: Docker Compose orchestration, Cloudflare Tunnels, Caddy reverse proxies, and systemd services.
@@ -59,11 +60,48 @@ Comprehensive guides and architectural specifications are located in [`docs/`](.
 
 ## 🚀 Quickstart
 
-### Option 1: Local Python (Recommended for Development)
+### Option 1: Single-Command Bootstrapper (Recommended for Everyone)
+
+Zenith includes an automated, idempotent bootstrapper that inspects your host, configures isolation, verifies health, and launches the browser in one step:
+
+**Linux & macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Aditya-Gamer011/zenith/main/zenith-install.sh | bash
+```
+*(Or clone the repository and run `./zenith-install.sh`)*
+
+**Windows (PowerShell 5.1 / 7+):**
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\zenith-install.ps1
+```
+
+The bootstrapper automatically guides you through 8 polished stages:
+`[1/8] Detecting system` → `[2/8] Checking Docker` → `[3/8] Installing dependencies` → `[4/8] Validating config` → `[5/8] Building containers` → `[6/8] Starting services` → `[7/8] Waiting for health checks` → `[8/8] Opening Zenith`.
+
+---
+
+### Option 2: Docker Compose Direct Launch
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-username/zenith.git
+git clone https://github.com/Aditya-Gamer011/zenith.git
+cd zenith
+
+# 2. Initialize environment (.env.example has all defaults)
+cp .env.example .env
+
+# 3. Build and launch containers in detached mode
+docker compose up --build -d
+```
+Open **`http://localhost:8005`** in your browser.
+
+---
+
+### Option 3: Native Python Virtual Environment (Development)
+
+```bash
+# 1. Clone or navigate to the repository
 cd zenith
 
 # 2. Create and activate a Python 3.11+ virtual environment
@@ -80,19 +118,6 @@ cp .env.example .env
 
 # 5. Launch Zenith
 python run.py
-```
-Open **`http://localhost:8005`** in your browser.
-
----
-
-### Option 2: Docker Compose (Production Ready)
-
-```bash
-# 1. Copy environment template and add your Gemini API key
-cp .env.example .env
-
-# 2. Build and launch containers in the background
-docker compose up --build -d
 ```
 Open **`http://localhost:8005`** in your browser.
 

@@ -17,7 +17,26 @@ This guide explains how to get Zenith running live, configure its environment, e
 
 ## 2. Launching Zenith Live
 
-### Method A: Native Python Virtual Environment (Fastest)
+### Method A: Single-Command Unified Bootstrapper (Recommended)
+
+Zenith includes an automated, cross-platform bootstrapper that inspects your host, configures isolation, verifies health, and launches the browser interface in one step:
+
+```bash
+# Single command (Linux & macOS):
+curl -fsSL https://raw.githubusercontent.com/Aditya-Gamer011/zenith/main/zenith-install.sh | bash
+
+# Or run locally from cloned repo:
+./zenith-install.sh
+
+# Windows (PowerShell):
+.\zenith-install.ps1
+```
+
+For complete CLI options, maintenance modes (`--repair`, `--update`, `--uninstall`), and architecture details, see the **[Unified Bootstrapper Guide](./BOOTSTRAPPER.md)**.
+
+---
+
+### Method B: Native Python Virtual Environment (Fastest for Development)
 
 ```bash
 # 1. Clone or navigate to the repository
@@ -42,7 +61,7 @@ Open this URL in your web browser. If no API keys are configured, Zenith automat
 
 ---
 
-### Method B: Docker Compose (Recommended for Production)
+### Method C: Docker Compose Direct Launch
 
 Zenith includes a ready-to-run `docker-compose.yml` and `Dockerfile`:
 

@@ -866,26 +866,28 @@
     const startTime = performance.now();
 
     function drawFlightFrame(elapsed, now) {
-      let speed = 24;
+      const HOLD_SECS = 4.5;
+      let speed = 12;
       let cameraPitch = 0;
-      let cloudDensity = 0.22;
+      let cloudDensity = 0.20;
       let voidDarkness = 0;
 
-      if (elapsed < 1.2) {
-        speed = 24 + elapsed * 12;
+      if (elapsed < HOLD_SECS) {
+        speed = 12;
         cameraPitch = 0;
-        cloudDensity = 0.22;
-      } else if (elapsed < 2.5) {
-        const p = (elapsed - 1.2) / 1.3;
-        speed = 38 + p * 46;
+        cloudDensity = 0.20;
+        voidDarkness = 0;
+      } else if (elapsed < HOLD_SECS + 1.4) {
+        const p = (elapsed - HOLD_SECS) / 1.4;
+        speed = 28 + p * 56;
         cameraPitch = p * 140;
-        cloudDensity = 0.22 + p * 0.78;
-      } else if (elapsed < 3.8) {
+        cloudDensity = 0.20 + p * 0.80;
+      } else if (elapsed < HOLD_SECS + 2.8) {
         speed = 84;
         cameraPitch = 140;
         cloudDensity = 1.0;
-      } else if (elapsed < 4.5) {
-        const p = (elapsed - 3.8) / 0.7;
+      } else if (elapsed < HOLD_SECS + 3.8) {
+        const p = (elapsed - (HOLD_SECS + 2.8)) / 1.0;
         speed = Math.max(0, 84 * (1 - p * p));
         cameraPitch = 140 * (1 - p);
         cloudDensity = Math.max(0, 1.0 - p * 1.5);
@@ -902,43 +904,43 @@
 
       // Title & tagline updates
       if (hudTagline) {
-        if (elapsed <= 1.2) {
-          hudTagline.textContent = "Descending through cloud deck...";
-        } else if (elapsed <= 2.4) {
+        if (elapsed <= HOLD_SECS) {
+          hudTagline.textContent = "Autonomous AI Operating Layer";
+        } else if (elapsed <= HOLD_SECS + 1.4) {
           hudTagline.textContent = "Approaching cloud canyon descent corridor...";
-        } else if (elapsed <= 3.8) {
+        } else if (elapsed <= HOLD_SECS + 2.8) {
           hudTagline.textContent = "Navigating dense silver cloud deck...";
         } else {
           hudTagline.textContent = "Clearing cloud base into obsidian void...";
         }
       }
       if (heroTitle) {
-        if (elapsed <= 1.2) {
+        if (elapsed <= HOLD_SECS) {
           heroTitle.style.opacity = "1";
-        } else if (elapsed <= 2.4) {
-          heroTitle.style.opacity = String(Math.max(0, 1 - (elapsed - 1.2) / 0.8));
+        } else if (elapsed <= HOLD_SECS + 1.2) {
+          heroTitle.style.opacity = String(Math.max(0, 1 - (elapsed - HOLD_SECS) / 1.2));
         } else {
           heroTitle.style.opacity = "0";
         }
       }
       if (hudStatus) {
-        if (elapsed <= 1.2) hudStatus.textContent = "DESCENT IN PROGRESS";
-        else if (elapsed <= 2.4) hudStatus.textContent = "ENTERING CLOUD CANYON";
-        else if (elapsed <= 3.8) hudStatus.textContent = "PENETRATING CLOUD DECK";
+        if (elapsed <= HOLD_SECS) hudStatus.textContent = "ORBITAL CRUISE // ZENITH ACTIVE";
+        else if (elapsed <= HOLD_SECS + 1.4) hudStatus.textContent = "ENTERING CLOUD CANYON";
+        else if (elapsed <= HOLD_SECS + 2.8) hudStatus.textContent = "PENETRATING CLOUD DECK";
         else hudStatus.textContent = "BREAKTHROUGH COMPLETE";
       }
       if (hudCoord) {
-        if (elapsed <= 1.2) hudCoord.textContent = "ALT 28,000 FT // SPEED 420 KTS";
-        else if (elapsed <= 2.4) hudCoord.textContent = "ALT 16,000 FT // SPEED 540 KTS";
-        else if (elapsed <= 3.8) hudCoord.textContent = "ALT 7,500 FT // ZERO VISIBILITY";
+        if (elapsed <= HOLD_SECS) hudCoord.textContent = "ALT 38,000 FT // SPEED 320 KTS";
+        else if (elapsed <= HOLD_SECS + 1.4) hudCoord.textContent = "ALT 18,000 FT // SPEED 540 KTS";
+        else if (elapsed <= HOLD_SECS + 2.8) hudCoord.textContent = "ALT 7,500 FT // ZERO VISIBILITY";
         else hudCoord.textContent = "ALT 1,000 FT // LEVEL FLIGHT";
       }
 
-      // Micro-turbulence during dense cloud transit (t = 1.8s to 3.9s)
+      // Micro-turbulence during dense cloud transit
       let shakeX = 0;
       let shakeY = 0;
-      if (elapsed >= 1.8 && elapsed <= 3.9) {
-        const turbPhase = Math.sin(((elapsed - 1.8) / 2.1) * Math.PI);
+      if (elapsed >= HOLD_SECS + 0.8 && elapsed <= HOLD_SECS + 2.9) {
+        const turbPhase = Math.sin(((elapsed - (HOLD_SECS + 0.8)) / 2.1) * Math.PI);
         const mag = turbPhase * 3.6;
         shakeX = Math.sin(now * 0.045) * mag + Math.sin(now * 0.11) * (mag * 0.4);
         shakeY = Math.cos(now * 0.038) * (mag * 0.75) + Math.cos(now * 0.092) * (mag * 0.3);
@@ -958,11 +960,12 @@
       ctx.fillRect(0, 0, width, height);
 
       // 2. Stars
-      const starFade = Math.max(0, 1 - (elapsed / 2.6));
+      const starFade = elapsed < HOLD_SECS ? 1.0 : Math.max(0, 1 - ((elapsed - HOLD_SECS) / 2.6));
       if (starFade > 0.01) {
         for (let i = 0; i < numStars; i++) {
           const s = stars[i];
-          const curZ = ((s.initialZ - elapsed * 350) % 2400 + 2400) % 2400 + 50;
+          const starOffset = elapsed < HOLD_SECS ? elapsed * 50 : (HOLD_SECS * 50 + (elapsed - HOLD_SECS) * 350);
+          const curZ = ((s.initialZ - starOffset) % 2400 + 2400) % 2400 + 50;
           const prevZ = curZ + speed * 0.5;
 
           const k = fov / curZ;
@@ -985,8 +988,8 @@
       }
 
       // 3. Crescent Moon (Positioned lower-left on horizon, zooms past left peripheral)
-      if (moonImg.complete && moonImg.naturalWidth > 0 && elapsed < 3.0) {
-        const moonProgress = Math.min(1.0, elapsed / 2.2);
+      if (moonImg.complete && moonImg.naturalWidth > 0 && elapsed < HOLD_SECS + 2.8) {
+        const moonProgress = elapsed <= HOLD_SECS ? 0 : Math.min(1.0, (elapsed - HOLD_SECS) / 2.2);
         const moonX = width * 0.15 - (moonProgress ** 1.6) * width * 0.42;
         const moonY = height * 0.44 - (moonProgress ** 1.6) * height * 0.48;
         const moonScale = 0.42 + (moonProgress ** 2.0) * 1.8;
@@ -1013,8 +1016,9 @@
       }
 
       // 4. Distant Horizon Cloud Sea
-      if (horizonCloudsImg.complete && horizonCloudsImg.naturalWidth > 0 && elapsed < 3.6) {
-        const horizAlpha = Math.max(0, 1.0 - (elapsed / 3.2) ** 2.0);
+      if (horizonCloudsImg.complete && horizonCloudsImg.naturalWidth > 0 && elapsed < HOLD_SECS + 3.0) {
+        const horizProgress = elapsed <= HOLD_SECS ? 0 : (elapsed - HOLD_SECS);
+        const horizAlpha = Math.max(0, 1.0 - (horizProgress / 2.6) ** 2.0);
         if (horizAlpha > 0.01) {
           ctx.save();
           ctx.globalAlpha = horizAlpha * 0.82;
@@ -1032,7 +1036,8 @@
         const projected = [];
         for (let i = 0; i < numClouds; i++) {
           const c = clouds[i];
-          const curZ = ((c.initialZ - elapsed * 750) % 2500 + 2500) % 2500 + 30;
+          const cloudOffset = elapsed < HOLD_SECS ? elapsed * 80 : (HOLD_SECS * 80 + (elapsed - HOLD_SECS) * 750);
+          const curZ = ((c.initialZ - cloudOffset) % 2500 + 2500) % 2500 + 30;
           projected.push({ ...c, curZ });
         }
         projected.sort((a, b) => b.curZ - a.curZ);
@@ -1069,7 +1074,8 @@
           ctx.lineCap = "round";
           for (let i = 0; i < numStreamers; i++) {
             const s = streamers[i];
-            const curZ = ((s.initialZ - elapsed * 1200) % 1800 + 1800) % 1800 + 20;
+            const streamOffset = elapsed < HOLD_SECS ? 0 : (elapsed - HOLD_SECS) * 1200;
+            const curZ = ((s.initialZ - streamOffset) % 1800 + 1800) % 1800 + 20;
             const prevZ = curZ + speed * 1.6;
 
             const k = fov / curZ;
@@ -1112,7 +1118,7 @@
       }
 
       if (hud) {
-        hud.style.opacity = elapsed >= 4.2 ? "0" : "1";
+        hud.style.opacity = elapsed >= (HOLD_SECS + 3.6) ? "0" : "1";
       }
     }
 
@@ -1236,8 +1242,8 @@
     }
 
     // Initial Telemetry text — Sleek, chill, confident
-    if (hudStatus) hudStatus.textContent = "DESCENT IN PROGRESS";
-    if (hudCoord) hudCoord.textContent = "ALT 28,000 FT // SPEED 420 KTS";
+    if (hudStatus) hudStatus.textContent = "ORBITAL CRUISE // ZENITH ACTIVE";
+    if (hudCoord) hudCoord.textContent = "ALT 38,000 FT // SPEED 320 KTS";
     const currentGen = ++flightGeneration;
     let flightEnded = false;
     const endFlightAndReveal = () => {
@@ -1310,7 +1316,7 @@
     window._activeFlightEngineInstance = flightEngine;
 
     // Safety fallback timeout in case requestAnimationFrame is inactive
-    cinematicFlightTimer = setTimeout(endFlightAndReveal, 6500);
+    cinematicFlightTimer = setTimeout(endFlightAndReveal, 11000);
 
     // Skip flight handler
     const skipBtn = $("cinema-skip-btn");

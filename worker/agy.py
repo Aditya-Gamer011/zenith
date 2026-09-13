@@ -1,8 +1,7 @@
-"""Antigravity CLI (agy) adapter — the actual worker transport.
+"""Antigravity CLI (agy) adapter — cross-platform worker transport.
 
-Zenith doesn't care how a coding agent runs; this module is the one seam that
-talks to Google's Antigravity CLI (`agy`). It exposes a small, task-oriented
-API:
+Zenith delegates engineering and coding tasks to Google's Antigravity CLI (`agy`).
+This module provides the task-oriented adapter:
 
     submit(spec, workspace, parent) -> task_id        # spawn agy, stream JSONL
     get_status(task_id) -> dict
@@ -12,12 +11,10 @@ API:
     list_artifacts(task_id) -> list[str]
     wait_until(task_id, statuses, timeout) -> dict
 
-Magic:
-- Parses the `agy --output-format stream-json` lines into `current_activity`
-  (step types + text deltas) and `output` (final result).
-- Persists via TaskStore (worker/tasks.py), updates are reflected to Zenith
-  through the REST API in peacant.py.
-- The subprocess is detached: `agy` keeps running even if the HTTP API restarts.
+Cross-platform design:
+- OS-neutral: operates across Linux, macOS, and Windows.
+- Dynamically resolves user home directories, workspace paths, and CLI binaries.
+- Safe process lifecycle tracking with native platform termination fallbacks.
 """
 from __future__ import annotations
 
@@ -27,13 +24,17 @@ import re
 import shutil
 import signal
 import subprocess
+import threading
 import time
-import uuid
+from pathlib import Path
 
 from . import tasks as T  # worker/tasks.py
 
 # Whether we've already surfaced the agent's clarifying question this session.
 _seek_clarify: dict[str, bool] = {}
+
+# Active process tracking for robust cross-platform cancellation
+_active_procs: dict[str, subprocess.Popen] = {}
 
 
 def _mark_waiting(task_id: str, on_update) -> None:
@@ -44,7 +45,35 @@ def _mark_waiting(task_id: str, on_update) -> None:
     if on_update:
         on_update(task_id, status=T.WAITING_FOR_INPUT)
 
-_AGY = os.environ.get("AGY_BIN", shutil.which("agy") or shutil.which("antigravity") or "agy")
+
+def _resolve_agy_binary() -> str:
+    """Locate the Antigravity CLI executable across Linux, macOS, and Windows."""
+    env_bin = os.environ.get("AGY_BIN")
+    if env_bin and shutil.which(env_bin):
+        return env_bin
+    
+    found = shutil.which("agy") or shutil.which("antigravity")
+    if found:
+        return found
+    
+    # Check standard per-user binary paths
+    home = Path.home()
+    is_win = os.name == "nt"
+    candidates = [
+        home / ".local" / "bin" / ("agy.exe" if is_win else "agy"),
+        home / ".local" / "bin" / ("antigravity.exe" if is_win else "antigravity"),
+        home / "AppData" / "Roaming" / "npm" / "agy.cmd",
+        home / "AppData" / "Local" / "Programs" / "agy" / "agy.exe",
+        Path("/usr/local/bin/agy"),
+        Path("/usr/bin/agy"),
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return "agy"
+
+
+_AGY = _resolve_agy_binary()
 # The coding agent. Antigravity's own "low" effort is enough for most fixes;
 # use "high" for planning-heavy tasks via agent flags below.
 _MODEL = os.environ.get("AGY_MODEL", "gemini-3.1-pro-high")
@@ -52,7 +81,16 @@ _EFFORT = os.environ.get("AGY_EFFORT", "high")
 # Long tasks shouldn't be cut short by agy's default 5m print timeout; Zenith
 # runs tasks as background jobs so we set a generous outer bound.
 _MAX_WAIT = int(os.environ.get("AGY_MAX_WAIT", str(60 * 60 * 4)))  # 4h default
-_WS_ROOTS = ["/home/singh/zenith-workspaces", "/home/singh/peacos-workspaces", "/home/singh", "/workspace"]
+
+_DEFAULT_WORKSPACE_ROOT = os.environ.get(
+    "ZENITH_WORKSPACES_DIR",
+    str(Path.home() / "zenith-workspaces")
+)
+_WS_ROOTS = [
+    _DEFAULT_WORKSPACE_ROOT,
+    str(Path.home()),
+    "/workspace",
+]
 
 
 def _pick(model: str) -> str:
@@ -125,32 +163,44 @@ def prompt_from_spec(spec: dict) -> str:
 
 def _ensure_workspace_rules(ws_path: str) -> None:
     """Save workspace tools/rules into .agents/rules so Antigravity automatically discovers them."""
-    rules_dir = os.path.join(ws_path, ".agents", "rules")
-    os.makedirs(rules_dir, exist_ok=True)
-    rules_file = os.path.join(rules_dir, "environment_tools.md")
-    if not os.path.exists(rules_file):
+    rules_dir = Path(ws_path) / ".agents" / "rules"
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    rules_file = rules_dir / "environment_tools.md"
+    if not rules_file.exists():
         content = """# Workspace Environment & Tool Guidelines
 
 ## Native Capability Discovery
 - You are Google Antigravity, running autonomously within this workspace.
 - Check workspace files, documentation, package manifests, and codebase structure first before making assumptions.
-- Run tests and verification commands (`npm test`, `pytest`, `docker`, etc.) directly using bash execution.
+- Run tests and verification commands (`npm test`, `pytest`, `docker`, etc.) directly using command execution.
 - Maintain git commits for meaningful task milestones.
 - Keep output concise and skimmable.
 """
-        with open(rules_file, "w", encoding="utf-8") as f:
-            f.write(content)
+        rules_file.write_text(content, encoding="utf-8")
+
+
+def _is_safe_workspace_path(p: str) -> bool:
+    """Validate that a workspace path does not target sensitive system roots."""
+    try:
+        p_obj = Path(p).resolve()
+        if p_obj == Path(p_obj.anchor):
+            return False
+        parts = {part.lower() for part in p_obj.parts}
+        disallowed = {"proc", "sys", "windows", "system32", "etc"}
+        if parts & disallowed:
+            return False
+        return True
+    except Exception:
+        return False
 
 
 def _workspace_dir(spec: dict, default_root: str = None) -> str:
     """Resolve a workspace path, creating it if needed."""
-    root = default_root or "/home/singh/peacos-workspaces"
+    root = default_root or _DEFAULT_WORKSPACE_ROOT
     raw = (spec.get("workspace") or "").strip()
     if raw:
-        # allow absolute or relative under root
         p = os.path.abspath(os.path.expanduser(raw))
-        # only allow under the trusted root or an existing dir the user cares about
-        if p != "/" and not p.startswith("/proc") and not p.startswith("/sys"):
+        if _is_safe_workspace_path(p):
             os.makedirs(p, exist_ok=True)
             _ensure_workspace_rules(p)
             return p
@@ -191,7 +241,7 @@ def _stream_lines(proc, task_id: str, on_update) -> None:
     result_text: list[str] = []
     last_activity = ""
     for raw in proc.stdout:
-        line = raw.decode("utf-8", "replace").rstrip("\n")
+        line = raw.decode("utf-8", "replace").rstrip("\r\n")
         if not line.strip():
             continue
         try:
@@ -218,8 +268,6 @@ def _stream_lines(proc, task_id: str, on_update) -> None:
                     last_activity = frag
             if delta:
                 result_text.append(delta)
-            # An agent blocked on a question pauses instead of finishing: mark
-            # the task WAITING_FOR_INPUT so the monitor relays it to the user.
             if "CLARIFY:" in (frag or ""):
                 _mark_waiting(task_id, on_update)
         elif ev == "result":
@@ -228,20 +276,16 @@ def _stream_lines(proc, task_id: str, on_update) -> None:
                 on_update(task_id, output=res["response"].strip())
             if res.get("status"):
                 on_update(task_id, current_activity=f"[result:{res['status']}]")
-    # final catch-all
-    if result_text and not (on_update):
-        pass  # keep; the per-line on_update() already stored output
 
 
 def submit(spec: dict, parent: str | None = None, workspace: str | None = None) -> T.Task:
     """Create + start a task. Non-blocking: returns immediately with a Task."""
     prompt = prompt_from_spec(spec)
-    # Always resolve through the same expander so ~/ and relative paths become
-    # absolute, the dir is created, and the ledger stores the real path.
     if workspace:
-        spec = dict(spec); spec["workspace"] = workspace
+        spec = dict(spec)
+        spec["workspace"] = workspace
     ws = _workspace_dir(spec)
-    os.makedirs(ws, exist_ok=True)  # ensure the workspace exists before agy cd's into it
+    os.makedirs(ws, exist_ok=True)
     task = T.store.create(spec, ws, prompt, parent)
     T.store.set_status(task.id, T.RUNNING, started=True)
     _spawn(task.id)
@@ -261,36 +305,41 @@ def _spawn(task_id: str) -> None:
         "--output-format", "stream-json",
         "--print-timeout", f"{_MAX_WAIT}s",
         "--add-dir", task.workspace,
-        # Headless print mode can't prompt for permissions; auto-approve so the
-        # coding agent can write files / run commands inside the workspace.
-        # Safety is layered: task briefs forbid destructive/publish unless told,
-        # and config keeps destructive_allowed=False by default.
         "--dangerously-skip-permissions",
     ]
     env = dict(os.environ)
-    # Run under the user (must own ~/.gemini auth): this process is already
-    # running as singh via the systemd unit.
     env.pop("AGY_DISABLE", None)
+    fallback_cwd = str(Path.home())
 
     def _run():
+        proc = None
         try:
             proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                env=env, cwd=task.workspace or "/home/singh",
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=task.workspace or fallback_cwd,
             )
+            _active_procs[task_id] = proc
             _stream_lines(proc, task_id, T.store.update)
             out, err = proc.communicate(timeout=_MAX_WAIT + 60)
         except Exception as exc:
             T.store.set_status(task_id, T.FAILED, error=str(exc))
             return
+        finally:
+            _active_procs.pop(task_id, None)
+
+        sig_term = getattr(signal, "SIGTERM", 15)
+        sig_kill = getattr(signal, "SIGKILL", None)
+
         if proc.returncode == 0:
             T.store.update(task_id, status=T.COMPLETED)
-        elif proc.returncode == -signal.SIGKILL or proc.returncode == -signal.SIGTERM:
+        elif (sig_kill and proc.returncode == -sig_kill) or proc.returncode == -sig_term:
             T.store.update(task_id, status=T.CANCELLED)
         else:
             T.store.update(task_id, status=T.FAILED, errors=[err.decode("utf-8", "replace")[:2000]])
 
-    import threading
     th = threading.Thread(target=_run, daemon=True, name=f"agy-{task_id}")
     th.start()
 
@@ -304,7 +353,6 @@ def _get(task_id: str) -> T.Task:
 
 def get_status(task_id: str) -> dict:
     t = _get(task_id)
-    # discover artifacts lazily on completed tasks
     if t.status == T.COMPLETED and not t.artifacts:
         arts = _list_artifacts(t.workspace)
         if arts:
@@ -323,10 +371,8 @@ def send_followup(task_id: str, message: str) -> bool:
     if t.status not in (T.RUNNING, T.WAITING_FOR_INPUT, T.COMPLETED):
         return False
     if not t.conversation_id:
-        # no running conversation id yet; can't continue a corpse
         t = T.store.update(task_id, status=T.WAITING_FOR_INPUT)
         return False
-    # If the underlying agy run already finished, resume via --conversation.
     cmd = [
         _AGY, "--print", message,
         "--conversation", t.conversation_id,
@@ -336,37 +382,64 @@ def send_followup(task_id: str, message: str) -> bool:
         "--print-timeout", f"{_MAX_WAIT}s",
         "--dangerously-skip-permissions",
     ]
+    fallback_cwd = str(Path.home())
     try:
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            env=dict(os.environ), cwd=t.workspace or "/home/singh",
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=dict(os.environ),
+            cwd=t.workspace or fallback_cwd,
         )
     except Exception:
         return False
-    # We don't block; fire-and-forget is fine — the followup turn updates the
-    # conversation. (Real wait + per-turn output can be added later.)
     return True
 
 
 def cancel(task_id: str) -> bool:
+    """Cancel a running task safely across Linux, macOS, and Windows."""
     t = _get(task_id)
     if t.status not in (T.QUEUED, T.STARTING, T.RUNNING, T.WAITING_FOR_INPUT):
         return False
-    # kill the agy subprocess if still alive (best-effort by pattern)
+
+    # 1. Terminate tracked subprocess directly
+    proc = _active_procs.get(task_id)
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    # 2. Process query fallback
     for pid in _agy_pids(task_id):
         try:
-            os.kill(pid, signal.SIGTERM)
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                os.kill(pid, signal.SIGTERM)
         except OSError:
             pass
+
     T.store.update(task_id, status=T.CANCELLED, completed_at=T._now())
     return True
 
 
 def _agy_pids(task_id: str) -> list[int]:
+    """Find orphaned agy processes for a task across platforms."""
     pids = []
     try:
-        out = subprocess.check_output(["pgrep", "-f", f"agy.*{task_id}"], text=True, timeout=3)
-        pids = [int(x) for x in out.split() if x.strip()]
+        if os.name == "nt":
+            cmd = ["powershell", "-NoProfile", "-Command",
+                   f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*agy*{task_id}*' }} | Select-Object -ExpandProperty ProcessId"]
+            out = subprocess.check_output(cmd, text=True, timeout=4)
+            pids = [int(x.strip()) for x in out.splitlines() if x.strip().isdigit()]
+        elif shutil.which("pgrep"):
+            out = subprocess.check_output(["pgrep", "-f", f"agy.*{task_id}"], text=True, timeout=3)
+            pids = [int(x) for x in out.split() if x.strip().isdigit()]
     except Exception:
         pass
     return pids

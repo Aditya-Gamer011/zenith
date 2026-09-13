@@ -10,12 +10,15 @@ does NOT forward the raw user message.
 """
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 
 
 def default_workspace(slug: str) -> str:
     """A new project dir under the worker's workspace root."""
-    return f"/home/singh/peacos-workspaces/{slug}"
+    root = os.environ.get("ZENITH_WORKSPACES_DIR") or str(Path.home() / "zenith-workspaces")
+    return str(Path(root) / slug)
 
 
 def slugify(text: str) -> str:

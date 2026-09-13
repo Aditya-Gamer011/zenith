@@ -1,9 +1,15 @@
-# Zenith — local dev compose
-# Usage:  cp .env.example .env   →   fill in GEMINI_API_KEY   →   docker compose up --build
+# Zenith — Autonomous AI Operating Layer
+# Production Orchestration Configuration
+# Run via single-command bootstrapper: ./zenith-install.sh
+# Or manually: docker compose up -d
+
 services:
   zenith:
-    build: .
-    container_name: zenith
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zenith:latest
+    container_name: zenith-core
     restart: unless-stopped
     ports:
       - "${ZENITH_PORT:-8005}:8005"
@@ -12,34 +18,42 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8005
-      - ZENITH_PORT=8005
-      - TZ=Asia/Kolkata
-      # Voice: Groq Whisper STT + Edge neural TTS (+ STT/TTS provider choice)
+      - ZENITH_PORT=${ZENITH_PORT:-8005}
+      - TZ=${USER_TIMEZONE:-${TZ:-UTC}}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_WHISPER_MODEL=${GROQ_WHISPER_MODEL:-whisper-large-v3-turbo}
       - STT_PROVIDER=${STT_PROVIDER:-groq}
       - TTS_PROVIDER=${TTS_PROVIDER:-edgetts}
       - EDGE_VOICE=${EDGE_VOICE:-en-IN-NeerjaNeural}
-      # homelab control-plane — socket is read-only (no root in container)
-      - DOCKER_SOCKET=/var/run/docker.sock
-      - GUARDED_CONTAINERS=${GUARDED_CONTAINERS:-zenith,hostpheus,codraw-app,jellyfin,sonarr,radarr,prowlarr,qbittorrent,seerr,n8n,portainer,uptime-kuma,vaultwarden,homepage,twilight-mc-server,twilight-mc-playit,twilight-mc-bore,cloudflared,homelab-caddy}
+      # Explicit opt-in safety permissions (disabled by default)
+      - ALLOW_SHELL=${ALLOW_SHELL:-no}
+      - ALLOW_DOCKER=${ALLOW_DOCKER:-no}
+      - ALLOW_GITHUB=${ALLOW_GITHUB:-yes}
+      - ALLOW_SYSTEM=${ALLOW_SYSTEM:-yes}
+      - DOCKER_SOCKET=${DOCKER_SOCKET:-/var/run/docker.sock}
+      - GUARDED_CONTAINERS=${GUARDED_CONTAINERS:-zenith-core}
     volumes:
-      # persist memory + screenshots + static assets + code outside the container
-      - ./data:/app/data
-      - ./static:/app/static
-      - ./zenith:/app/zenith
-      - ./tests:/app/tests
-      # control-plane: Docker socket + GitHub creds + workspace
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${GH_CONFIG_DIR:-${HOME}/.config/gh}:/root/.config/gh:ro
-      - ${HOST_WORKSPACE:-.}:/workspace:ro
-      # Generated files (PDFs, docs, spreadsheets) persist here
-      - /tmp/zenith-files:/tmp/zenith-files
+      # Persistent named volumes for isolated state preservation
+      - zenith-data:/app/data
+      - zenith-static:/app/static
+      - zenith-files:/tmp/zenith-files
+      # Host Integrations (OPT-IN ONLY):
+      # To grant Zenith access to manage other local containers, set ALLOW_DOCKER=yes in .env
+      # and uncomment the read-only docker socket line below:
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8005/api/health"]
-      interval: 30s
+      interval: 15s
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  zenith-data:
+    name: zenith-data
+  zenith-static:
+    name: zenith-static
+  zenith-files:
+    name: zenith-files

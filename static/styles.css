@@ -2386,7 +2386,7 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
 }
 
 .cinema-stage.is-flying .cinema-hero-title {
-  animation: heroTitleFloat 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: heroTitleFloat 6.0s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .cinema-brand {
@@ -3161,15 +3161,15 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
 @keyframes heroTitleFloat {
   0% {
     opacity: 0;
-    transform: translateY(16px) scale(0.95);
+    transform: translateY(14px) scale(0.97);
   }
-  25% {
+  6% {
     opacity: 1;
     transform: translateY(0px) scale(1);
   }
-  65% {
-    opacity: 0.95;
-    transform: translateY(-6px) scale(1.02);
+  75% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
   }
   100% {
     opacity: 0;
