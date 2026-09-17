@@ -10,7 +10,6 @@ __pycache__/
 .gitignore
 README.md
 ROADMAP.md
-docs/
 tests/
 node_modules/
 .DS_Store

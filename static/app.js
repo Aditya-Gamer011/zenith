@@ -14,6 +14,42 @@
   let streamBuffer = "";
   let awaiting = false;
 
+  const SEND_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+  const STOP_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor"/></svg>`;
+
+  function setGenerating(isGen) {
+    const btn = $("send-btn");
+    if (!btn) return;
+    if (isGen) {
+      btn.classList.add("stop");
+      btn.innerHTML = STOP_ICON_SVG;
+      btn.title = "Stop generating (Esc)";
+      btn.setAttribute("aria-label", "Stop generating");
+    } else {
+      btn.classList.remove("stop");
+      btn.innerHTML = SEND_ICON_SVG;
+      btn.title = "Send";
+      btn.setAttribute("aria-label", "Send");
+    }
+  }
+
+  function stopGenerating() {
+    if (!awaiting) return;
+    clearTimeout(awaitingTimer);
+    try {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "stop" }));
+      }
+      fetch("/api/chat/stop", { method: "POST" }).catch(() => {});
+    } catch (_) {}
+    if (streamBuffer) {
+      streamBuffer += "\n\n*(generation stopped)*";
+    }
+    finishStream(streamBuffer);
+    awaiting = false;
+    setGenerating(false);
+  }
+
   // voice — hands-free live conversation (no push-to-talk)
   let micStream = null;
   let audioCtx = null;
@@ -137,14 +173,25 @@
   function updateDisplayedUserName(name) {
     if (!name) return;
     window._zenithUserName = name;
+    if (currentUser) {
+      currentUser.name = name;
+      currentUser.username = name.toLowerCase().replace(/\s+/g, "_");
+    }
+    const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
     const greetSoft = document.querySelector("#wlcm-title .wlcm-soft");
-    if (greetSoft) greetSoft.textContent = `, ${name}`;
+    if (greetSoft) greetSoft.textContent = `, ${formattedName}`;
+    const wlcmName = $("wlcm-name");
+    if (wlcmName) wlcmName.textContent = `, ${formattedName}`;
     const userUname = $("hdr-user-name");
-    if (userUname) userUname.textContent = name;
+    if (userUname) userUname.textContent = formattedName;
     const dropName = $("hdr-dropdown-name");
-    if (dropName) dropName.textContent = name;
+    if (dropName) dropName.textContent = formattedName;
+    const userAvatar = $("hdr-user-avatar");
+    if (userAvatar && !(currentUser && currentUser.picture)) {
+      userAvatar.textContent = formattedName.charAt(0).toUpperCase();
+    }
     const starterName = $("starter-name");
-    if (starterName && !starterName.value) starterName.value = name;
+    if (starterName) starterName.value = formattedName;
   }
 
   function showToast(icon, message, durationMs = 3500) {
@@ -2071,8 +2118,10 @@
 
       panelsHtml += `<div class="setup-category-panel ${isActive ? "active" : ""}" data-category="${cat.id}">`;
 
-      // Special: Integration cards at top of Art & Design and Cloud panels
-      if (cat.id === "art_design") {
+      // Special: Integration cards at top of Brain, Art & Design, and Cloud panels
+      if (cat.id === "brain") {
+        panelsHtml += `<div class="integration-cards-container" id="brain-cards"></div>`;
+      } else if (cat.id === "art_design") {
         panelsHtml += `<div class="integration-cards-container" id="art-design-cards"></div>`;
       } else if (cat.id === "cloud") {
         panelsHtml += `<div class="integration-cards-container" id="cloud-cards"></div>`;
@@ -2264,6 +2313,14 @@
 
   const INTEGRATION_PROVIDERS = [
     {
+      id: "antigravity",
+      category: "brain",
+      name: "Google Antigravity Worker",
+      description: "Autonomous coding agent running on port 8022. Executes terminal commands, file refactors, and test suites with gemini-3.1-pro-high.",
+      logo: `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/><polygon points="12 6 15 12 9 12 12 6" fill="currentColor"/></svg>`,
+      scopes: "Autonomous coding agent, terminal builds, tests (port 8022)",
+    },
+    {
       id: "figma",
       category: "art_design",
       name: "Figma",
@@ -2314,16 +2371,21 @@
     }
     const integrations = statusData.integrations || [];
 
-    ["art_design", "cloud"].forEach((catId) => {
+    ["brain", "art_design", "cloud"].forEach((catId) => {
       const containerId = `${catId.replace("_", "-")}-cards`;
       const container = document.getElementById(containerId);
       if (!container) return;
 
       const providers = INTEGRATION_PROVIDERS.filter((p) => p.category === catId);
-      const titleText = catId === "art_design" ? "Connected Design Tools" : "Connected Developer Services";
-      const subText = catId === "art_design"
-        ? "Connect your design tools to enable AI-powered design operations."
-        : "Connect developer services to auto-retrieve API keys, tokens, and domain settings.";
+      let titleText = "Connected Developer Services";
+      let subText = "Connect developer services to auto-retrieve API keys, tokens, and domain settings.";
+      if (catId === "brain") {
+        titleText = "Autonomous Coding Agents & Workers";
+        subText = "Connect Google Antigravity to unlock autonomous multi-file coding, terminal builds, and test verification.";
+      } else if (catId === "art_design") {
+        titleText = "Connected Design Tools";
+        subText = "Connect your design tools to enable AI-powered design operations.";
+      }
 
       let html = `<div class="integration-cards-header">
         <h3 class="integration-cards-title">${esc(titleText)}</h3>
@@ -2332,10 +2394,16 @@
 
       providers.forEach((provider) => {
         const conn = integrations.find((i) => i.provider === provider.id) || {};
-        const status = conn.status || (statusData[`${provider.id}_configured`] ? "connected" : "not_connected");
+        let status = conn.status || (statusData[`${provider.id}_configured`] ? "connected" : "not_connected");
+        if (provider.id === "antigravity") {
+          status = statusData.antigravity_configured ? "connected" : "not_connected";
+        }
         const sl = STATUS_LABELS[status] || STATUS_LABELS.not_connected;
         const isConnected = status === "connected";
-        const userName = conn.provider_user_name || "";
+        let userName = conn.provider_user_name || "";
+        if (provider.id === "antigravity" && isConnected) {
+          userName = "gemini-3.1-pro-high (Port 8022)";
+        }
         const lastSync = conn.last_sync_at || conn.connected_at || "";
         const configured = statusData[`${provider.id}_configured`] || isConnected || (provider.id === "github" || provider.id === "cloudflare");
 
@@ -2402,7 +2470,88 @@
 
   // Global handlers for integration buttons
   let _oauthPopup = null;
+  let _agyPollInterval = null;
+
+  async function showAntigravityAuthModal() {
+    const modal = document.getElementById("agy-auth-modal");
+    if (!modal) return;
+
+    modal.style.display = "flex";
+    const statusText = document.getElementById("agy-modal-status-text");
+    const statusTitle = document.getElementById("agy-modal-status-title");
+    const pulseRing = document.getElementById("agy-modal-pulse");
+    const footerHint = document.getElementById("agy-modal-footer-hint");
+
+    if (statusTitle) statusTitle.textContent = "Initiating Google OAuth Authorization...";
+    if (statusText) statusText.textContent = "Reaching the Antigravity worker daemon on your host...";
+    if (pulseRing) pulseRing.style.display = "block";
+    if (footerHint) footerHint.textContent = "Connecting to worker...";
+
+    try {
+      const resp = await fetch("/api/integrations/antigravity/authorize", { method: "POST" });
+      const data = await resp.json();
+
+      if (data.already_authenticated) {
+        if (statusTitle) statusTitle.textContent = "Already Authenticated! 🎉";
+        if (statusText) statusText.textContent = "Antigravity CLI is already authorized with Google and ready for autonomous operations.";
+        if (pulseRing) pulseRing.style.display = "none";
+        if (footerHint) footerHint.textContent = "Authenticated";
+        setTimeout(() => {
+          modal.style.display = "none";
+          loadIntegrationCards();
+        }, 1800);
+        return;
+      }
+
+      if (!resp.ok) {
+        if (statusTitle) statusTitle.textContent = "Worker Offline";
+        if (statusText) statusText.textContent = data.error || "Antigravity worker daemon is offline. Please start it on the host.";
+        if (pulseRing) pulseRing.style.display = "none";
+        if (footerHint) footerHint.textContent = "Error";
+        return;
+      }
+
+      if (statusTitle) statusTitle.textContent = "Google OAuth Prompt Active";
+      if (statusText) statusText.textContent = data.message || "A browser window was opened for Google sign-in. Confirm permissions to proceed.";
+      if (footerHint) footerHint.textContent = "Listening for token confirmation...";
+
+      // Poll worker status until token acquired
+      if (_agyPollInterval) clearInterval(_agyPollInterval);
+      _agyPollInterval = setInterval(async () => {
+        try {
+          const stResp = await fetch("/api/worker/status");
+          if (stResp.ok) {
+            const st = await stResp.json();
+            if (st.authenticated) {
+              clearInterval(_agyPollInterval);
+              _agyPollInterval = null;
+              if (statusTitle) statusTitle.textContent = "Connected Successfully! 🚀";
+              if (statusText) statusText.textContent = "Google Antigravity is now connected! Autonomous frontier coding worker is fully online.";
+              if (pulseRing) pulseRing.style.display = "none";
+              if (footerHint) footerHint.textContent = "Authorization confirmed!";
+              setTimeout(() => {
+                modal.style.display = "none";
+                loadIntegrationCards();
+              }, 2000);
+            }
+          }
+        } catch (err) {
+          // ignore transient poll error
+        }
+      }, 1500);
+
+    } catch (e) {
+      if (statusTitle) statusTitle.textContent = "Connection Error";
+      if (statusText) statusText.textContent = e.message;
+      if (pulseRing) pulseRing.style.display = "none";
+    }
+  }
+
   window.__zenithConnect = async function (provider) {
+    if (provider === "antigravity") {
+      showAntigravityAuthModal();
+      return;
+    }
     try {
       const resp = await fetch(`/api/integrations/${provider}/authorize`);
       const data = await resp.json();
@@ -2835,7 +2984,22 @@
     }
 
     const sendBtn = $("send-btn");
-    if (sendBtn) sendBtn.addEventListener("click", () => send($("inp").value));
+    if (sendBtn) {
+      sendBtn.addEventListener("click", () => {
+        if (awaiting) {
+          stopGenerating();
+        } else {
+          send($("inp").value);
+        }
+      });
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && awaiting) {
+        e.preventDefault();
+        stopGenerating();
+      }
+    });
 
     // Zenith Quick-Action Prompt Chips
     document.addEventListener("click", (e) => {
@@ -3041,6 +3205,7 @@
       { id: "theme-custom", group: "Intelligence & Agents", icon: "🎨", title: "Customize UI Theme", hint: "Live-tweak colors, typography, or custom CSS", action: () => sendDirect("Open UI Customizer and show me the available themes") },
 
       // CONTROLS & NAVIGATION
+      { id: "nav-agents", group: "Navigation & Views", icon: "👥", title: "Organization & Multi-Agent Roster", hint: "View departments, specialists, capabilities & custom hires", action: () => { if (window.toggleContextDrawer) window.toggleContextDrawer("ctx-agents"); } },
       { id: "nav-daybook", group: "Navigation & Views", icon: "📋", title: "Toggle Daybook Sidebar", hint: "Open to-dos, calendar & recent notes", action: () => toggleSide() },
       { id: "nav-logs", group: "Navigation & Views", icon: "📜", title: "Toggle Execution Logs Drawer", hint: "View raw tool execution logs in real-time", action: () => onTermBtn() },
       { id: "nav-voice", group: "Navigation & Views", icon: "🎙️", title: "Open Hands-Free Voice (Space)", hint: "Conversational voice interface with speech orb", action: () => onVoiceBtn() },
@@ -3496,6 +3661,11 @@
       return;
     }
     ws.onopen = () => {
+      clearTimeout(awaitingTimer);
+      if (awaiting) {
+        awaiting = false;
+        setGenerating(false);
+      }
       setConn(true);
       heartbeatTimer = setInterval(() => {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" }));
@@ -3517,6 +3687,11 @@
       route(m);
     };
     ws.onclose = (e) => {
+      clearTimeout(awaitingTimer);
+      if (awaiting) {
+        awaiting = false;
+        setGenerating(false);
+      }
       setConn(false);
       clearInterval(heartbeatTimer);
       if (e.code === 4001) {
@@ -3529,7 +3704,14 @@
       }
       scheduleReconnect();
     };
-    ws.onerror = () => { try { ws.close(); } catch {} };
+    ws.onerror = () => {
+      clearTimeout(awaitingTimer);
+      if (awaiting) {
+        awaiting = false;
+        setGenerating(false);
+      }
+      try { ws.close(); } catch {}
+    };
   }
 
   function scheduleReconnect() {
@@ -3626,12 +3808,28 @@
         syncStream();
         break;
       case "tool_start":
-        addToolChip(m.name, m.args);
+        if (m.delegated_agent && activeDelegationCard) {
+          appendDelegationStep(m);
+        } else {
+          addToolChip(m.name, m.args);
+        }
         logTerminal(`call ${m.name} → ${JSON.stringify(m.args || {})}`, "tool");
         break;
       case "tool_result":
-        addToolResult(m);
+        if (m.delegated_agent && activeDelegationCard) {
+          updateDelegationStep(m);
+        } else {
+          addToolResult(m);
+        }
         logTerminal(`${m.name} → ${m.ok ? "ok" : "fail"}${m.result ? " · " + String(m.result).slice(0, 90) : ""}`, m.ok ? "succ" : "err");
+        break;
+      case "delegation_start":
+        handleDelegationStart(m);
+        logTerminal(`[DELEGATION] ${m.agent_name || m.department} ← ${m.task || ""}`, "tool");
+        break;
+      case "delegation_done":
+        handleDelegationDone(m);
+        logTerminal(`[DELEGATION] ${m.department} finished (${m.status}, ${m.tool_calls || 0} tools)`, "succ");
         break;
       case "agent_start":
         beginTurn(m.prompt);
@@ -3810,6 +4008,7 @@
 
     streamBuffer = "";
     awaiting = false;
+    setGenerating(false);
     pumpOutQueue();  // multi-message in a row: send the next queued prompt
     scroll();
 
@@ -3890,6 +4089,7 @@
     addBubble("assistant", `<p class="err-text">✕ ${esc(msg || "Something went wrong.")}</p>`);
     streamBuffer = "";
     awaiting = false;
+    setGenerating(false);
     cancelTurn();
     pumpOutQueue();
   }
@@ -3899,7 +4099,8 @@
   const STEP_ICONS = {
     weather: "☀", calendar: "◫", mail: "✉", email: "✉", homelab: "⬡", fleet: "⬡",
     system: "◇", commute: "⌖", maps: "⌖", homeassistant: "◒", research: "⌕",
-    web: "⌕", browser: "◫",
+    web: "⌕", browser: "◫", delegate: "⚡", coding: "💻", code: "💻",
+    hr: "👥", hire: "👥", creative: "🎨", pptx: "📊", operations: "⚙", docker: "🐳",
   };
   function toolIconFor(name) {
     const n = (name || "").toLowerCase();
@@ -3919,7 +4120,162 @@
 </div>`;
   }
 
+  const DEPT_ICONS = {
+    communication: "📬",
+    coding: "💻",
+    hr: "👥",
+    research: "🔍",
+    operations: "⚙️",
+    productivity: "🗓️",
+    creative: "🎨",
+    utility: "🔌",
+  };
+
+  let activeDelegationCard = null;
+
+  function createDelegationCard(dept, task, agentName, runId) {
+    const icon = DEPT_ICONS[dept] || "🤖";
+    const displayName = agentName || (dept ? (dept.charAt(0).toUpperCase() + dept.slice(1) + " Specialist") : "Departmental Specialist");
+
+    const card = document.createElement("div");
+    card.className = "delegation-card running";
+    card.id = `delegation-${runId || dept || Date.now()}`;
+    card._dept = dept;
+    card._stepsCount = 0;
+
+    card.innerHTML = `
+      <div class="delegation-hdr">
+        <div class="delegation-agent-info">
+          <span class="delegation-icon">${icon}</span>
+          <span class="delegation-title">${esc(displayName)} <span class="delegation-badge">${esc(dept || 'autonomous')}</span></span>
+        </div>
+        <span class="delegation-status running">Working...</span>
+      </div>
+      <div class="delegation-body">
+        <div class="delegation-task"><strong>Mission:</strong> ${renderMD(task || 'Executing assigned mission...')}</div>
+        <div class="delegation-steps" style="display:none"></div>
+      </div>
+    `;
+
+    const hdr = card.querySelector(".delegation-hdr");
+    const body = card.querySelector(".delegation-body");
+    hdr.addEventListener("click", () => {
+      body.style.display = body.style.display === "none" ? "flex" : "none";
+      scroll();
+    });
+
+    $("msgs").appendChild(card);
+    activeDelegationCard = card;
+    scroll();
+    return card;
+  }
+
+  function handleDelegationStart(m) {
+    if (!activeDelegationCard || activeDelegationCard._dept !== m.department) {
+      createDelegationCard(m.department, m.task, m.agent_name, m.run_id);
+    } else {
+      if (m.agent_name) {
+        const titleEl = activeDelegationCard.querySelector(".delegation-title");
+        if (titleEl) titleEl.innerHTML = `${esc(m.agent_name)} <span class="delegation-badge">${esc(m.department)}</span>`;
+      }
+      if (m.task) {
+        const taskEl = activeDelegationCard.querySelector(".delegation-task");
+        if (taskEl) taskEl.innerHTML = `<strong>Mission:</strong> ${renderMD(m.task)}`;
+      }
+    }
+  }
+
+  function appendDelegationStep(m) {
+    if (!activeDelegationCard) return;
+    const stepsBox = activeDelegationCard.querySelector(".delegation-steps");
+    if (!stepsBox) return;
+    stepsBox.style.display = "flex";
+
+    activeDelegationCard._stepsCount = (activeDelegationCard._stepsCount || 0) + 1;
+    const stepRow = document.createElement("div");
+    stepRow.className = "delegation-step-row";
+    stepRow.id = `step-${m.name}-${Date.now()}`;
+    stepRow._toolName = m.name;
+
+    let argDesc = "";
+    try {
+      const a = typeof m.args === "string" ? JSON.parse(m.args) : m.args;
+      argDesc = Object.values(a || {}).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" · ");
+      if (argDesc.length > 60) argDesc = argDesc.slice(0, 58) + "...";
+    } catch {}
+
+    stepRow.innerHTML = `
+      <div class="delegation-step-left">
+        <span class="tl-mark running" style="font-size:0.7rem">↳</span>
+        <span class="delegation-step-name">${esc(m.name)}</span>
+        ${argDesc ? `<span class="delegation-step-args">(${esc(argDesc)})</span>` : ""}
+      </div>
+      <span class="tl-tag run">working</span>
+    `;
+
+    stepsBox.appendChild(stepRow);
+    scroll();
+  }
+
+  function updateDelegationStep(m) {
+    if (!activeDelegationCard) return;
+    const stepsBox = activeDelegationCard.querySelector(".delegation-steps");
+    if (!stepsBox) return;
+
+    const rows = stepsBox.querySelectorAll(".delegation-step-row");
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i]._toolName === m.name && !rows[i]._done) {
+        rows[i]._done = true;
+        const tag = rows[i].querySelector(".tl-tag");
+        if (tag) {
+          tag.className = "tl-tag " + (m.ok ? "ok" : "fail");
+          tag.textContent = m.ok ? "done" : "fail";
+        }
+        break;
+      }
+    }
+    scroll();
+  }
+
+  function handleDelegationDone(m) {
+    if (!activeDelegationCard) return;
+    const statusEl = activeDelegationCard.querySelector(".delegation-status");
+    if (statusEl) {
+      statusEl.className = "delegation-status " + (m.status === "done" ? "done" : "fail");
+      statusEl.textContent = m.status === "done"
+        ? `✓ Completed (${m.tool_calls || activeDelegationCard._stepsCount || 0} tools)`
+        : `✗ Issue (${m.status})`;
+    }
+    activeDelegationCard.classList.remove("running");
+    activeDelegationCard.classList.add(m.status === "done" ? "done" : "fail");
+
+    if (m.result && !activeDelegationCard.querySelector(".delegation-result-snippet")) {
+      const body = activeDelegationCard.querySelector(".delegation-body");
+      if (body) {
+        const snippet = document.createElement("div");
+        snippet.className = "delegation-result-snippet";
+        snippet.textContent = m.result;
+        body.appendChild(snippet);
+      }
+    }
+
+    activeDelegationCard = null;
+    scroll();
+  }
+
   function addToolChip(name, args) {
+    if (name === "delegate_task") {
+      let dDept = "";
+      let dTask = "";
+      try {
+        const parsed = typeof args === "string" ? JSON.parse(args) : args;
+        dDept = parsed.department || parsed.name || "";
+        dTask = parsed.task || parsed.mission || "";
+      } catch {}
+      createDelegationCard(dDept, dTask);
+      return;
+    }
+
     window._lastToolChip = { name, args };
     const wrap = document.createElement("div");
     wrap.className = "tool-chip-wrap";
@@ -3969,6 +4325,14 @@
   }
 
   function addToolResult(m) {
+    if (m.name === "delegate_task" && activeDelegationCard) {
+      handleDelegationDone({
+        status: m.ok ? "done" : "fail",
+        result: m.result || m.content || "",
+      });
+      return;
+    }
+
     const wraps = $("msgs").querySelectorAll(".tool-chip-wrap");
     const lastWrap = wraps[wraps.length - 1];
     if (lastWrap) {
@@ -4076,6 +4440,10 @@
     let o;
     try { o = typeof args === "string" ? JSON.parse(args) : args; } catch { return ""; }
     if (!o || typeof o !== "object") return "";
+    if (o.department && o.task) {
+      const t = String(o.task).length > 60 ? String(o.task).slice(0, 60) + "…" : o.task;
+      return `[${o.department}] ${t}`;
+    }
     const key = Object.keys(o)[0];
     if (!key) return "";
     const v = o[key];
@@ -4329,18 +4697,20 @@
     const text = item.text;
     const opts = item.opts || {};
     awaiting = true;
+    setGenerating(true);
     // Watchdog: if Zenith never emits `done` (provider stall, WS hang), don't
     // lock the composer forever. Reset awaiting + queue so the user can retry.
     clearTimeout(awaitingTimer);
     awaitingTimer = setTimeout(() => {
       if (awaiting) {
         awaiting = false;
+        setGenerating(false);
         if (typingEl) { typingEl.remove(); typingEl = null; }
         addBubble("assistant", renderMD("_I'm still thinking — say again or type a new message._"));
         scroll();
         pumpOutQueue();  // let any queued message flow
       }
-    }, 90000);
+    }, 30000);
     hideWelcome();
 
     let fullPrompt = text || "Please inspect the attached file/image.";
@@ -4390,6 +4760,7 @@
     typingEl = null;
     streamBuffer = "";
     awaiting = false;
+    setGenerating(false);
     turnStartTs = null;
   }
 
@@ -4397,6 +4768,8 @@
     $("msgs").innerHTML = resetWelcomeHTML();
     typingEl = null;
     streamBuffer = "";
+    awaiting = false;
+    setGenerating(false);
     turnStartTs = null;
     clearConfirm();
     cancelTurn();
@@ -4410,7 +4783,7 @@
     else if (h >= 12 && h < 17) g = "Good afternoon";
     else if (h >= 17 || h < 4) g = "Good evening";
     else g = "Good morning";
-    const rawName = (currentUser && (currentUser.name || currentUser.username)) || window._zenithUserName || "Friend";
+    const rawName = window._zenithUserName || (currentUser && (currentUser.name || currentUser.username)) || "Friend";
     const uName = rawName ? (rawName.charAt(0).toUpperCase() + rawName.slice(1)) : "Friend";
 
     if (window._lastBriefingSummary) {
@@ -4590,8 +4963,6 @@
       if (camVideo) camVideo.style.display = "none";
       if (camPlaceholder) camPlaceholder.style.display = "flex";
       if (camLed) camLed.classList.remove("live");
-      const chipCam = $("chip-camera");
-      if (chipCam) chipCam.classList.remove("active");
       if (visionPollTimer) { clearInterval(visionPollTimer); visionPollTimer = null; }
       fetch("/api/vision/camera/stop", { method: "POST" }).catch(() => {});
     }
@@ -4617,8 +4988,6 @@
           }
           await fetch("/api/vision/camera/start", { method: "POST" });
           if (camLed) camLed.classList.add("live");
-          const chipCam = $("chip-camera");
-          if (chipCam) chipCam.classList.add("active");
           if (camPresenceBadge) camPresenceBadge.textContent = "User Present";
           if (camHudGesture) camHudGesture.textContent = "GESTURE: TRACKING";
 
@@ -4748,23 +5117,39 @@
 
     // ── Context Drawer Wiring ──
     const ctxBtn = $("context-btn");
+    const agentsBtn = $("agents-btn");
     const ctxDrawer = $("context-drawer");
     const ctxCloseBtn = $("context-drawer-close-btn");
     const ctxGhostBtn = $("ctx-ghost-toggle-btn");
-    const chipGhost = $("chip-ghost");
 
     function toggleContextDrawer(targetTab) {
       if (!ctxDrawer) return;
       const isHidden = ctxDrawer.style.display === "none";
-      ctxDrawer.style.display = isHidden ? "flex" : "none";
       if (isHidden) {
+        ctxDrawer.style.display = "flex";
+        if (ctxBtn) ctxBtn.classList.add("active");
+        const termDrawer = $("term-drawer");
+        if (termDrawer) termDrawer.style.display = "none";
         if (targetTab) switchContextTab(targetTab);
         refreshContextDrawer();
+      } else {
+        const activeTab = document.querySelector(".ctx-tab.active");
+        if (targetTab && activeTab && activeTab.dataset.tab !== targetTab) {
+          switchContextTab(targetTab);
+        } else {
+          ctxDrawer.style.display = "none";
+          if (ctxBtn) ctxBtn.classList.remove("active");
+        }
       }
     }
+    window.toggleContextDrawer = toggleContextDrawer;
 
     if (ctxBtn) ctxBtn.addEventListener("click", () => toggleContextDrawer("ctx-overview"));
-    if (ctxCloseBtn) ctxCloseBtn.addEventListener("click", () => { if (ctxDrawer) ctxDrawer.style.display = "none"; });
+    if (agentsBtn) agentsBtn.addEventListener("click", () => toggleContextDrawer("ctx-agents"));
+    if (ctxCloseBtn) ctxCloseBtn.addEventListener("click", () => {
+      if (ctxDrawer) ctxDrawer.style.display = "none";
+      if (ctxBtn) ctxBtn.classList.remove("active");
+    });
 
     function switchContextTab(tabId) {
       document.querySelectorAll(".ctx-tab").forEach(t => {
@@ -4773,6 +5158,7 @@
       document.querySelectorAll(".ctx-pane").forEach(p => {
         p.style.display = p.id === ("pane-" + tabId) ? "flex" : "none";
       });
+      if (tabId === "ctx-agents") loadAgentsPane();
       if (tabId === "ctx-activity") loadActivityPane();
       if (tabId === "ctx-memory") loadMemoryPane();
       if (tabId === "ctx-privacy") loadPrivacyPane();
@@ -4783,22 +5169,327 @@
       tab.addEventListener("click", () => switchContextTab(tab.dataset.tab));
     });
 
+    let _allSystemTools = [];
+    let _selectedToolsForForge = new Set();
+    let _agentForgeInitialized = false;
+
+    async function loadAgentsPane() {
+      const deptsList = $("ctx-depts-list");
+      const customList = $("ctx-custom-list");
+      const runsList = $("ctx-runs-list");
+      if (!deptsList) return;
+
+      if (!_agentForgeInitialized) {
+        initAgentForge();
+        _agentForgeInitialized = true;
+      }
+
+      try {
+        const resp = await fetch("/api/agents/roster");
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        const roster = data.roster || [];
+        const runs = data.active_runs || [];
+
+        const builtins = roster.filter(a => a.type === "builtin");
+        const custom = roster.filter(a => a.type === "custom");
+
+        if ($("ctx-stat-depts")) $("ctx-stat-depts").textContent = String(builtins.length);
+        if ($("ctx-stat-custom")) $("ctx-stat-custom").textContent = String(custom.length);
+        const totalTools = roster.reduce((acc, a) => acc + (a.tools ? a.tools.length : 0), 0);
+        if ($("ctx-stat-tools")) $("ctx-stat-tools").textContent = String(totalTools);
+
+        const deptIcons = {
+          communication: "📬",
+          coding: "💻",
+          hr: "👥",
+          research: "🔍",
+          operations: "⚙️",
+          productivity: "🗓️",
+          creative: "🎨",
+          utility: "🔌",
+        };
+
+        deptsList.innerHTML = builtins.map(d => {
+          const icon = deptIcons[d.id] || "🤖";
+          const tools = d.tools || [];
+          return `
+            <div class="dept-card" data-dept="${esc(d.id)}">
+              <div class="dept-card-hdr">
+                <span class="dept-card-title">${icon} ${esc(d.name)}</span>
+                <span class="dept-card-badge">${tools.length} capabilities</span>
+              </div>
+              <div class="dept-card-desc">${esc(d.description)}</div>
+              <button type="button" class="dept-tools-toggle" data-target="tools-${esc(d.id)}">
+                ▸ View allocated tools (${tools.length})
+              </button>
+              <div class="dept-tools-list" id="tools-${esc(d.id)}" style="display:none">
+                ${tools.map(t => `<span class="tool-pill">${esc(t)}</span>`).join("")}
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        deptsList.querySelectorAll(".dept-tools-toggle").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const listEl = $(btn.dataset.target);
+            if (listEl) {
+              const isClosed = listEl.style.display === "none";
+              listEl.style.display = isClosed ? "flex" : "none";
+              btn.textContent = (isClosed ? "▾ Hide allocated tools" : "▸ View allocated tools") + ` (${listEl.children.length})`;
+            }
+          });
+        });
+
+        if (customList) {
+          if (custom.length === 0) {
+            customList.innerHTML = `<div class="placeholder" style="font-size: 0.76rem; color: var(--ink-dim); padding: 8px 0;">No custom agents hired yet. Click "+ Hire Specialist" or ask Zenith / HR to hire one.</div>`;
+          } else {
+            customList.innerHTML = custom.map(c => {
+              const tools = c.tools || [];
+              return `
+                <div class="custom-agent-item" data-id="${esc(c.id)}">
+                  <div class="custom-agent-hdr">
+                    <span class="dept-card-title">🤖 ${esc(c.name)} <span class="flow-badge">${esc(c.id)}</span></span>
+                    <div class="custom-agent-actions">
+                      <button type="button" class="ctx-mini-btn" data-action="inspect" data-id="${esc(c.id)}">Inspect</button>
+                      <button type="button" class="ctx-mini-btn" data-action="fire" data-id="${esc(c.id)}" style="color:#ef4444">Retire</button>
+                    </div>
+                  </div>
+                  <div class="dept-card-desc"><strong>Dept:</strong> ${esc(c.department || 'Special Operations')} · ${esc(c.description || '')}</div>
+                  <div style="font-size: 0.68rem; color: var(--ink-faint); font-family: var(--mono); margin-top: 2px;">Tools (${tools.length}): ${esc(tools.join(', '))}</div>
+                </div>
+              `;
+            }).join("");
+
+            customList.querySelectorAll("button[data-action='fire']").forEach(btn => {
+              btn.addEventListener("click", async () => {
+                if (!confirm(`Are you sure you want to retire and remove agent '${btn.dataset.id}'?`)) return;
+                try {
+                  const delRes = await fetch(`/api/agents/${encodeURIComponent(btn.dataset.id)}`, { method: "DELETE" });
+                  const resData = await delRes.json();
+                  toast(resData.message || "Agent retired");
+                  loadAgentsPane();
+                } catch (err) {
+                  toast("Failed to retire agent: " + err.message);
+                }
+              });
+            });
+
+            customList.querySelectorAll("button[data-action='inspect']").forEach(btn => {
+              btn.addEventListener("click", async () => {
+                try {
+                  const insRes = await fetch(`/api/agents/${encodeURIComponent(btn.dataset.id)}`);
+                  const insData = await insRes.json();
+                  if (insData.profile) {
+                    alert(`Agent: ${insData.profile.name} (#${insData.profile.id})\nDepartment: ${insData.profile.department}\nDescription: ${insData.profile.description}\nTools: ${(insData.profile.tools || []).join(', ')}\n\nSystem Prompt:\n${insData.profile.system}`);
+                  }
+                } catch (err) {
+                  toast("Failed to inspect: " + err.message);
+                }
+              });
+            });
+          }
+        }
+
+        if (runsList) {
+          if (runs.length === 0) {
+            runsList.innerHTML = `<div class="placeholder" style="font-size: 0.76rem; color: var(--ink-dim); padding: 8px 0;">No active or recent agent missions.</div>`;
+          } else {
+            runsList.innerHTML = runs.slice(0, 8).map(r => `
+              <div class="delegation-step-row" style="padding: 6px 0;">
+                <div class="delegation-step-left">
+                  <span class="flow-badge">#${esc(r.id)}</span>
+                  <span style="font-weight:600; color:var(--ink)">${esc(r.name)}</span>
+                  <span style="color:var(--ink-dim); font-size:0.7rem">${esc((r.goal || '').slice(0, 60))}</span>
+                </div>
+                <span class="tl-tag ${r.status === 'done' ? 'ok' : (r.status === 'running' ? 'run' : 'fail')}">${esc(r.status)} (${r.tool_calls || 0} tools)</span>
+              </div>
+            `).join("");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load organization roster:", err);
+      }
+    }
+
+    function initAgentForge() {
+      const toggleBtn = $("ctx-agent-forge-toggle-btn");
+      const forgeCard = $("ctx-agent-forge-card");
+      const closeBtn = $("ctx-agent-forge-close-btn");
+      const cancelBtn = $("forge-cancel-btn");
+      const submitBtn = $("forge-submit-btn");
+      const filterInput = $("forge-tools-filter");
+      const picker = $("forge-tools-picker");
+      const refreshBtn = $("ctx-roster-refresh-btn");
+
+      if (refreshBtn) refreshBtn.addEventListener("click", () => loadAgentsPane());
+
+      const toggleForge = (show) => {
+        if (!forgeCard) return;
+        forgeCard.style.display = show ? "block" : "none";
+        if (show && _allSystemTools.length === 0) {
+          loadSystemToolsForForge();
+        }
+      };
+
+      if (toggleBtn) toggleBtn.addEventListener("click", () => {
+        const isHidden = forgeCard.style.display === "none";
+        toggleForge(isHidden);
+      });
+      if (closeBtn) closeBtn.addEventListener("click", () => toggleForge(false));
+      if (cancelBtn) cancelBtn.addEventListener("click", () => toggleForge(false));
+
+      async function loadSystemToolsForForge() {
+        if (!picker) return;
+        try {
+          picker.innerHTML = '<span style="font-size:0.7rem; color:var(--ink-dim)">Loading catalog...</span>';
+          const resp = await fetch("/api/agents/tools");
+          const data = await resp.json();
+          _allSystemTools = data.tools || [];
+          renderForgeTools();
+        } catch (err) {
+          picker.innerHTML = '<span style="color:#ef4444">Failed to load tools catalog</span>';
+        }
+      }
+
+      function renderForgeTools() {
+        if (!picker) return;
+        const flt = (filterInput ? filterInput.value : "").toLowerCase().trim();
+        const filtered = _allSystemTools.filter(t => !flt || t.name.toLowerCase().includes(flt) || (t.description || "").toLowerCase().includes(flt));
+
+        picker.innerHTML = filtered.map(t => {
+          const isSel = _selectedToolsForForge.has(t.name);
+          return `
+            <span class="forge-tool-chip ${isSel ? 'selected' : ''}" data-tool="${esc(t.name)}" title="${esc(t.description)}">
+              <span>${isSel ? '✓' : '+'}</span>
+              <span>${esc(t.name)}</span>
+            </span>
+          `;
+        }).join("");
+
+        picker.querySelectorAll(".forge-tool-chip").forEach(chip => {
+          chip.addEventListener("click", () => {
+            const toolName = chip.dataset.tool;
+            if (_selectedToolsForForge.has(toolName)) {
+              _selectedToolsForForge.delete(toolName);
+            } else {
+              _selectedToolsForForge.add(toolName);
+            }
+            if ($("forge-selected-count")) $("forge-selected-count").textContent = String(_selectedToolsForForge.size);
+            renderForgeTools();
+          });
+        });
+      }
+
+      if (filterInput) {
+        filterInput.addEventListener("input", () => renderForgeTools());
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener("click", async () => {
+          const id = ($("forge-agent-id")?.value || "").trim().toLowerCase().replace(/\\s+/g, "_");
+          const name = ($("forge-agent-name")?.value || "").trim();
+          const dept = ($("forge-agent-dept")?.value || "").trim();
+          const desc = ($("forge-agent-desc")?.value || "").trim();
+          const prompt = ($("forge-agent-prompt")?.value || "").trim();
+          const statusEl = $("forge-status-msg");
+
+          if (!id || !prompt) {
+            alert("Agent Identifier and System Prompt are required.");
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Hiring...";
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.textContent = "Registering agent in SQLite store...";
+            statusEl.style.color = "var(--ink-dim)";
+          }
+
+          try {
+            const hireRes = await fetch("/api/agents/hire", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id,
+                name: name || id,
+                department: dept || "Special Operations",
+                role_description: desc || "Autonomous specialist",
+                system_prompt: prompt,
+                tools: Array.from(_selectedToolsForForge),
+              }),
+            });
+            const hireData = await hireRes.json();
+            if (hireData.ok) {
+              toast(hireData.message || "Agent hired successfully!");
+              toggleForge(false);
+              loadAgentsPane();
+            } else {
+              alert(hireData.message || "Failed to hire agent");
+            }
+          } catch (err) {
+            alert("Error: " + err.message);
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Hire & Persist Agent";
+          }
+        });
+      }
+    }
+
     async function refreshContextDrawer() {
       await Promise.all([loadOverviewPane(), syncPrivacyStatus()]);
     }
 
+    function renderSensoryGrid(privacy) {
+      const grid = $("ctx-sensor-grid");
+      if (!grid) return;
+      const isGhost = Boolean(privacy.ghost_mode);
+      const s = privacy.sensors || {};
+      const sensors = [
+        { name: "Screen Vision", active: !isGhost && Boolean(s.screen_awareness) },
+        { name: "Activity Watch", active: !isGhost && Boolean(s.activity_watch) },
+        { name: "Camera Vision", active: !isGhost && Boolean(s.camera && (camStream !== null)) },
+        { name: "Browser Use", active: !isGhost && Boolean(s.browser_automation) },
+      ];
+      grid.innerHTML = sensors.map(item => `
+        <div class="ctx-sensor-cell">
+          <div class="ctx-sensor-info">
+            <span class="ctx-sensor-name">${esc(item.name)}</span>
+            <span class="ctx-sensor-status ${item.active ? 'active' : 'paused'}">
+              ${item.active ? 'ACTIVE' : (isGhost ? 'GHOST PAUSED' : 'OFFLINE')}
+            </span>
+          </div>
+          <span class="ctx-sensor-indicator ${item.active ? 'active' : 'paused'}"></span>
+        </div>
+      `).join("");
+    }
+
     async function loadOverviewPane() {
       try {
-        const res = await fetch("/api/screen/status");
-        const data = await res.json();
-        if (data.ok && data.active_window) {
-          const w = data.active_window;
-          const appVal = $("ctx-app-val");
-          const titleVal = $("ctx-title-val");
-          const flowVal = $("ctx-workflow-val");
-          if (appVal) appVal.textContent = w.app_name || "--";
-          if (titleVal) titleVal.textContent = w.window_title || "--";
-          if (flowVal) flowVal.textContent = (w.workflow || "STANDBY").toUpperCase();
+        const [screenRes, privRes] = await Promise.all([
+          fetch("/api/screen/status").catch(() => null),
+          fetch("/api/privacy/status").catch(() => null),
+        ]);
+        if (screenRes && screenRes.ok) {
+          const data = await screenRes.json();
+          if (data.ok && data.active_window) {
+            const w = data.active_window;
+            const appVal = $("ctx-app-val");
+            const titleVal = $("ctx-title-val");
+            const flowVal = $("ctx-workflow-val");
+            if (appVal) appVal.textContent = w.app_name || "--";
+            if (titleVal) titleVal.textContent = w.window_title || "--";
+            if (flowVal) flowVal.textContent = (w.workflow || "STANDBY").toUpperCase();
+          }
+        }
+        if (privRes && privRes.ok) {
+          const pData = await privRes.json();
+          if (pData.ok && pData.privacy) {
+            renderSensoryGrid(pData.privacy);
+          }
         }
       } catch (_) {}
     }
@@ -4963,15 +5654,6 @@
     }
 
     if (ctxGhostBtn) ctxGhostBtn.addEventListener("click", toggleGhostMode);
-    if (chipGhost) chipGhost.addEventListener("click", toggleGhostMode);
-
-    const chipScreen = $("chip-screen");
-    const chipBrowser = $("chip-browser");
-    const chipMem = $("chip-memory");
-
-    if (chipScreen) chipScreen.addEventListener("click", () => toggleContextDrawer("ctx-overview"));
-    if (chipBrowser) chipBrowser.addEventListener("click", () => toggleContextDrawer("ctx-overview"));
-    if (chipMem) chipMem.addEventListener("click", () => toggleContextDrawer("ctx-memory"));
 
     async function syncPrivacyStatus() {
       try {
@@ -4986,17 +5668,7 @@
             const lbl = $("ctx-ghost-label");
             if (lbl) lbl.textContent = `Ghost Mode: ${isGhost ? 'ON' : 'OFF'}`;
           }
-          if (chipGhost) chipGhost.classList.toggle("active", isGhost);
-
-          const cScreen = $("chip-screen");
-          const cCam = $("chip-camera");
-          const cBrowser = $("chip-browser");
-          const cMem = $("chip-memory");
-
-          if (cScreen) cScreen.classList.toggle("active", !isGhost && p.sensors.screen_awareness);
-          if (cCam) cCam.classList.toggle("active", !isGhost && p.sensors.camera && (camStream !== null));
-          if (cBrowser) cBrowser.classList.toggle("active", !isGhost && p.sensors.browser_automation);
-          if (cMem) cMem.classList.toggle("active", !isGhost && p.sensors.memory_recording);
+          renderSensoryGrid(p);
         }
       } catch (_) {}
     }
@@ -6235,6 +6907,12 @@
         const btn = active.querySelector('.gev-fullscreen-btn');
         if (btn) window.toggleGevFullscreen(btn);
         else active.classList.remove('fullscreen');
+      }
+      const ctxDrawer = document.getElementById('context-drawer');
+      if (ctxDrawer && ctxDrawer.style.display !== 'none') {
+        ctxDrawer.style.display = 'none';
+        const ctxBtn = document.getElementById('context-btn');
+        if (ctxBtn) ctxBtn.classList.remove('active');
       }
     }
   });

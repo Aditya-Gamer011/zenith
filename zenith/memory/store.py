@@ -127,6 +127,18 @@ CREATE TABLE IF NOT EXISTS integration_audit_log (
     details TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS custom_agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    department TEXT NOT NULL,
+    role_description TEXT NOT NULL,
+    system_prompt TEXT NOT NULL,
+    allowed_tools TEXT NOT NULL,
+    created_by TEXT DEFAULT 'HR',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -328,3 +340,76 @@ def mark_email_processed(msg_id: str, sender: str, subject: str) -> None:
             (msg_id, sender, subject),
         )
         conn.commit()
+
+
+# ─── Dynamic Custom Agents Registry ──────────────────────────────────────────
+
+def save_custom_agent(agent_data: dict[str, Any]) -> bool:
+    agent_id = str(agent_data.get("id") or "").strip().lower()
+    name = str(agent_data.get("name") or agent_id).strip()
+    dept = str(agent_data.get("department") or "Special Operations").strip()
+    role_desc = str(agent_data.get("role_description") or "").strip()
+    prompt = str(agent_data.get("system_prompt") or "").strip()
+    tools_val = agent_data.get("allowed_tools") or []
+    if isinstance(tools_val, list):
+        tools_json = json.dumps(tools_val)
+    else:
+        tools_json = str(tools_val)
+    created_by = str(agent_data.get("created_by") or "HR").strip()
+
+    if not agent_id or not prompt:
+        return False
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO custom_agents (id, name, department, role_description, system_prompt, allowed_tools, created_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                department = excluded.department,
+                role_description = excluded.role_description,
+                system_prompt = excluded.system_prompt,
+                allowed_tools = excluded.allowed_tools,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (agent_id, name, dept, role_desc, prompt, tools_json, created_by),
+        )
+        conn.commit()
+    return True
+
+
+def get_custom_agent(agent_id: str) -> dict[str, Any] | None:
+    agent_id = (agent_id or "").strip().lower()
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM custom_agents WHERE id = ?", (agent_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["allowed_tools"] = json.loads(d.get("allowed_tools") or "[]")
+        except Exception:
+            d["allowed_tools"] = []
+        return d
+
+
+def list_custom_agents() -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT * FROM custom_agents ORDER BY name ASC").fetchall()
+        agents = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["allowed_tools"] = json.loads(d.get("allowed_tools") or "[]")
+            except Exception:
+                d["allowed_tools"] = []
+            agents.append(d)
+        return agents
+
+
+def delete_custom_agent(agent_id: str) -> bool:
+    agent_id = (agent_id or "").strip().lower()
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM custom_agents WHERE id = ?", (agent_id,))
+        conn.commit()
+        return cur.rowcount > 0

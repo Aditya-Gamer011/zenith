@@ -231,6 +231,11 @@ export class ShareLinkManager {
         && decodedLayerState === null,
       panelState: decodePanelStateParams(params),
       sharedAtMs: decodeShareCreatedAtMs(params),
+      label: (() => {
+        const raw = params.get('loc') || params.get('label') || params.get('name');
+        if (!raw) return null;
+        try { return decodeURIComponent(raw); } catch { return raw; }
+      })(),
     };
     state.restoreAuthority = {
       visual: this._restoreAuthority.visual,
@@ -327,6 +332,7 @@ export class ShareLinkManager {
         mapStack: mapCurrent ? state.mapStack : undefined,
         panelState,
         styleParams: visualCurrent ? state.styleParams : undefined,
+        label: state.label,
       });
       restoreStatus = 'applied';
     }

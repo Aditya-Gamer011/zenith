@@ -103,6 +103,25 @@ SECRETS_CATALOG = [
             "Enter or select the model string supported by your fallback provider.",
         ],
     },
+    {
+        "key": "WORKER_URL",
+        "label": "Antigravity Coding Worker Endpoint",
+        "category": "ai",
+        "category_label": "AI Brain & Intelligence",
+        "category_icon": "brain",
+        "required": False,
+        "is_secret": False,
+        "default": "http://host.docker.internal:8022",
+        "placeholder": "http://host.docker.internal:8022",
+        "description": "Local REST seam for delegating complex engineering, file manipulation, and coding tasks to the Google Antigravity CLI (agy).",
+        "where_to_get_url": "https://antigravity.google/docs/cli",
+        "where_to_get_label": "Antigravity CLI Documentation",
+        "guide_steps": [
+            "Inside Docker, Zenith accesses the host worker via 'http://host.docker.internal:8022'.",
+            "On bare metal without Docker, use 'http://127.0.0.1:8022'.",
+            "Run './scripts/setup-worker.sh' to bootstrap the worker daemon.",
+        ],
+    },
 
     # ── Category 2: Personalization & Profile ─────────────────────────────────
     {
@@ -1015,6 +1034,13 @@ def save_configuration(updates: dict[str, str]) -> dict[str, Any]:
     new_content = "\n".join(existing_lines) + "\n"
     env_path.write_text(new_content, encoding="utf-8")
     log.info("Saved updated configuration to %s", env_path)
+
+    # Sync updates directly to process environment
+    for k, v in updates.items():
+        if isinstance(v, bool):
+            os.environ[k] = "true" if v else "false"
+        else:
+            os.environ[k] = str(v).strip()
 
     # Reload runtime settings in memory
     settings.reload()

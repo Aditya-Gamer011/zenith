@@ -62,6 +62,7 @@ def _resolve_agy_binary() -> str:
     candidates = [
         home / ".local" / "bin" / ("agy.exe" if is_win else "agy"),
         home / ".local" / "bin" / ("antigravity.exe" if is_win else "antigravity"),
+        home / "AppData" / "Local" / "agy" / "bin" / "agy.exe",
         home / "AppData" / "Roaming" / "npm" / "agy.cmd",
         home / "AppData" / "Local" / "Programs" / "agy" / "agy.exe",
         Path("/usr/local/bin/agy"),
@@ -71,6 +72,28 @@ def _resolve_agy_binary() -> str:
         if c.is_file():
             return str(c)
     return "agy"
+
+
+def check_auth_status() -> dict[str, Any]:
+    """Check whether Antigravity CLI binary is installed and authenticated."""
+    bin_path = _resolve_agy_binary()
+    is_installed = bool(shutil.which(bin_path) or Path(bin_path).is_file())
+
+    home = Path.home()
+    token_files = [
+        home / ".gemini" / "antigravity-cli" / "antigravity-oauth-token",
+        home / ".gemini" / "antigravity" / "token.json",
+        home / ".gemini" / "credentials.json",
+    ]
+    is_authenticated = any(f.is_file() and f.stat().st_size > 0 for f in token_files)
+
+    return {
+        "installed": is_installed,
+        "path": bin_path if is_installed else None,
+        "authenticated": is_authenticated,
+        "model": _MODEL,
+        "effort": _EFFORT,
+    }
 
 
 _AGY = _resolve_agy_binary()

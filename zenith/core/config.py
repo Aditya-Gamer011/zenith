@@ -222,7 +222,7 @@ class Settings:
 
     def reload(self) -> None:
         """Reload configuration from .env and update in-memory settings."""
-        load_dotenv(PROJECT_ROOT / ".env", override=True)
+        load_dotenv(PROJECT_ROOT / ".env", override=False)
         self.setup_completed = _flag("ZENITH_SETUP_COMPLETED", default=False)
         self.user_name = os.getenv("USER_NAME", os.getenv("ZENITH_USER_NAME", "Friend")).strip()
         self.user_email = os.getenv("USER_EMAIL", os.getenv("ZENITH_USER_EMAIL", "")).strip()

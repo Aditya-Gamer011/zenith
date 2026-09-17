@@ -532,14 +532,20 @@ async def hourly_service_monitor() -> None:
         log.info("Hourly Service Health: All services online and healthy.")
 
 
+_email_poll_lock = asyncio.Lock()
+
+
 async def poll_email_gateway() -> None:
     """Poll incoming emails sent to zenith@agm.quest or Gmail and handle via EmailGateway."""
-    try:
-        from .email_gateway import process_incoming_emails
-        from ..main import _orpheus
-        await process_incoming_emails(_orpheus)
-    except Exception as exc:
-        log.error("email gateway poll error: %s", exc, exc_info=True)
+    if _email_poll_lock.locked():
+        return
+    async with _email_poll_lock:
+        try:
+            from .email_gateway import process_incoming_emails
+            from ..main import _orpheus
+            await process_incoming_emails(_orpheus)
+        except Exception as exc:
+            log.error("email gateway poll error: %s", exc, exc_info=True)
 
 
 async def gev_service_watchdog() -> None:
@@ -577,7 +583,7 @@ def schedule(scheduler) -> None:
     scheduler.add_job(morning_briefing, CronTrigger(hour=6, minute=0))
     scheduler.add_job(daily_email_digest, CronTrigger(hour=21, minute=30))
     scheduler.add_job(hourly_service_monitor, IntervalTrigger(hours=1))
-    scheduler.add_job(poll_email_gateway, IntervalTrigger(seconds=20))
+    scheduler.add_job(poll_email_gateway, IntervalTrigger(seconds=45))
     scheduler.add_job(wake_updates, IntervalTrigger(seconds=30))
     scheduler.add_job(worker_task_monitor, IntervalTrigger(seconds=10))
     scheduler.add_job(system_health, IntervalTrigger(minutes=15))

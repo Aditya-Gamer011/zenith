@@ -23,6 +23,12 @@ class Runner:
     def list(self):
         return self.service().list()
 
+    def list_roster(self):
+        return self.service().list_roster()
+
+    def get_agent_profile(self, name: str):
+        return self.service().get_agent_profile(name)
+
     def result(self, agent_id: str) -> str:
         return self.service().result(agent_id)
 

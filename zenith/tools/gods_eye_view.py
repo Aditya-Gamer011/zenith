@@ -181,14 +181,50 @@ def normalize_hud(hud_input: str) -> str:
     return "tactical"
 
 
-def parse_raw_coordinates(text: str) -> tuple[float, float] | None:
-    """Check if the given string contains explicit coordinates like '37.77, -122.42'."""
-    pattern = r"[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?)\s*,\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)"
-    match = re.search(pattern, text)
-    if match:
+def parse_raw_coordinates(text: Any) -> tuple[float, float] | None:
+    """Parse raw coordinates from text or data structure (e.g. '37.77, -122.42' or '33.85 S, 151.21 E')."""
+    if not text:
+        return None
+    if isinstance(text, (list, tuple)) and len(text) >= 2:
         try:
-            parts = [p.strip() for p in match.group(0).split(",")]
-            lat, lon = float(parts[0]), float(parts[1])
+            lat, lon = float(text[0]), float(text[1])
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                return lat, lon
+        except (ValueError, TypeError):
+            pass
+    if isinstance(text, dict):
+        lat = text.get("lat") or text.get("latitude")
+        lon = text.get("lon") or text.get("lng") or text.get("longitude")
+        if lat is not None and lon is not None:
+            try:
+                flat, flon = float(lat), float(lon)
+                if -90 <= flat <= 90 and -180 <= flon <= 180:
+                    return flat, flon
+            except (ValueError, TypeError):
+                pass
+        text = str(text.get("location") or text.get("query") or text.get("name") or text)
+
+    s = str(text).strip()
+    # 1. Check for compass direction coordinates e.g. "48.8584 N, 2.2945 E" or "33.8568° S, 151.2153° W"
+    compass_pattern = r"([0-9]+(?:\.[0-9]+)?)\s*°?\s*([NSns])[,\s]+([0-9]+(?:\.[0-9]+)?)\s*°?\s*([EWew])"
+    cm = re.search(compass_pattern, s)
+    if cm:
+        try:
+            lat_val, lat_dir, lon_val, lon_dir = cm.groups()
+            lat = float(lat_val) * (-1 if lat_dir.upper() == "S" else 1)
+            lon = float(lon_val) * (-1 if lon_dir.upper() == "W" else 1)
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                return lat, lon
+        except Exception:
+            pass
+
+    # 2. Check for standard decimal pairs e.g. "48.8584, 2.2945" or "-37.7749, 144.9631"
+    dec_pattern = r"([-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?))[,\s]+([-+]?(?:180(?:\.0+)?|(?:1[0-7]\d|\d{1,2})(?:\.\d+)?))"
+    m = re.search(dec_pattern, s)
+    if m:
+        try:
+            lat = float(m.group(1))
+            lon = float(m.group(2))
             if -90 <= lat <= 90 and -180 <= lon <= 180:
                 return lat, lon
         except Exception:
@@ -196,9 +232,20 @@ def parse_raw_coordinates(text: str) -> tuple[float, float] | None:
     return None
 
 
-async def geocode_location(location: str) -> tuple[float, float, str]:
+async def geocode_location(location: Any) -> tuple[float, float, str]:
     """Geocode a place name, address, or preset into (lat, lon, formatted_name)."""
-    raw_clean = location.strip().lower()
+    if isinstance(location, dict):
+        coords = parse_raw_coordinates(location)
+        if coords:
+            return coords[0], coords[1], f"Target ({coords[0]:.4f}, {coords[1]:.4f})"
+        loc_str = str(location.get("location") or location.get("name") or location.get("query") or "")
+    else:
+        loc_str = str(location or "")
+
+    raw_clean = loc_str.strip().lower()
+    if not raw_clean:
+        p = PRESETS["orbit"]
+        return float(p["lat"]), float(p["lon"]), p["name"]
 
     # 1. Preset lookup
     if raw_clean in PRESETS:
@@ -211,7 +258,7 @@ async def geocode_location(location: str) -> tuple[float, float, str]:
             return float(p["lat"]), float(p["lon"]), p["name"]
 
     # 2. Raw coordinate match
-    coords = parse_raw_coordinates(location)
+    coords = parse_raw_coordinates(loc_str)
     if coords:
         return coords[0], coords[1], f"Target ({coords[0]:.4f}, {coords[1]:.4f})"
 
@@ -225,36 +272,57 @@ async def geocode_location(location: str) -> tuple[float, float, str]:
     if gkey:
         try:
             url = "https://maps.googleapis.com/maps/api/geocode/json"
-            async with httpx.AsyncClient(timeout=10, headers={"User-Agent": USER_AGENT}) as client:
-                res = await client.get(url, params={"address": location, "key": gkey})
+            async with httpx.AsyncClient(timeout=8, headers={"User-Agent": USER_AGENT}) as client:
+                res = await client.get(url, params={"address": loc_str, "key": gkey})
                 res.raise_for_status()
                 data = res.json()
             if data.get("status") == "OK" and data.get("results"):
                 res0 = data["results"][0]
                 loc = res0["geometry"]["location"]
-                name = res0.get("formatted_address", location)
+                name = res0.get("formatted_address", loc_str)
                 return float(loc["lat"]), float(loc["lng"]), name
         except Exception as e:
-            log.warning("Google Geocoding failed for '%s': %s", location, e)
+            log.warning("Google Geocoding failed for '%s': %s", loc_str, e)
 
-    # 4. OpenStreetMap Nominatim fallback (keyless, universal)
+    # 4. Photon (Komoot/OSM) fast geocoder (keyless, sub-200ms)
+    try:
+        url = "https://photon.komoot.io/api/"
+        async with httpx.AsyncClient(timeout=4, headers={"User-Agent": USER_AGENT}) as client:
+            res = await client.get(url, params={"q": loc_str, "limit": 1})
+            if res.status_code == 200:
+                data = res.json()
+                features = data.get("features", [])
+                if features and isinstance(features, list) and len(features) > 0:
+                    feat = features[0]
+                    geom = feat.get("geometry", {})
+                    coords_pt = geom.get("coordinates", [])
+                    if len(coords_pt) >= 2:
+                        lon, lat = float(coords_pt[0]), float(coords_pt[1])
+                        props = feat.get("properties", {})
+                        parts = [props.get(k) for k in ("name", "city", "state", "country") if props.get(k)]
+                        name = ", ".join(parts) if parts else props.get("name", loc_str)
+                        return lat, lon, name
+    except Exception as e:
+        log.warning("Photon geocoding failed for '%s': %s", loc_str, e)
+
+    # 5. OpenStreetMap Nominatim fallback (keyless, universal)
     try:
         url = "https://nominatim.openstreetmap.org/search"
-        async with httpx.AsyncClient(timeout=10, headers={"User-Agent": USER_AGENT}) as client:
-            res = await client.get(url, params={"q": location, "format": "json", "limit": 1})
+        async with httpx.AsyncClient(timeout=6, headers={"User-Agent": USER_AGENT}) as client:
+            res = await client.get(url, params={"q": loc_str, "format": "json", "limit": 1})
             res.raise_for_status()
             data = res.json()
         if data and isinstance(data, list) and len(data) > 0:
             item = data[0]
             lat = float(item["lat"])
             lon = float(item["lon"])
-            name = item.get("display_name", location)
+            name = item.get("display_name", loc_str)
             return lat, lon, name
     except Exception as e:
-        log.warning("Nominatim geocoding failed for '%s': %s", location, e)
+        log.warning("Nominatim geocoding failed for '%s': %s", loc_str, e)
 
     # Default fallback if everything fails
-    return 37.7749, -122.4194, location or "San Francisco, CA"
+    return 37.7749, -122.4194, loc_str or "San Francisco, CA"
 
 
 def build_gev_url(
@@ -269,6 +337,7 @@ def build_gev_url(
     celestial_ring: bool = False,
     scope: bool = True,
     base_override: str = "",
+    target_name: str = "",
 ) -> str:
     """Build God's Eye View URL hash state."""
     norm_style = normalize_style(style)
@@ -292,6 +361,8 @@ def build_gev_url(
         f"cr={1 if celestial_ring else 0}",
         f"sc={1 if scope else 1}",
     ]
+    if target_name:
+        params.append(f"loc={urllib.parse.quote(target_name)}")
     hash_str = "&".join(params)
 
     # Base URL resolution
@@ -416,7 +487,7 @@ def stop_gev_server() -> None:
 
 
 async def gods_eye_view(
-    location: str = "",
+    location: Any = "",
     lat: float | None = None,
     lon: float | None = None,
     alt: float | None = None,
@@ -434,14 +505,20 @@ async def gods_eye_view(
     # Try starting server in background if not already active
     asyncio.create_task(ensure_gev_server_started())
 
-    target_name = location or "Target"
+    if isinstance(location, dict):
+        loc_str = str(location.get("location") or location.get("name") or location.get("query") or "")
+        target_name = loc_str or "Target"
+    else:
+        loc_str = str(location or "")
+        target_name = loc_str or "Target"
+
     target_lat = lat
     target_lon = lon
     target_alt = alt if alt is not None else 800.0
 
     # If coordinates are not provided, geocode location
     if target_lat is None or target_lon is None:
-        raw_preset = (location or "").strip().lower()
+        raw_preset = loc_str.strip().lower()
         if raw_preset in PRESETS:
             p = PRESETS[raw_preset]
             target_lat = float(p["lat"])
@@ -457,7 +534,7 @@ async def gods_eye_view(
                 style = p["style"]
             if hud == "tactical" and "hud" in p:
                 hud = p["hud"]
-        elif location:
+        elif loc_str:
             target_lat, target_lon, target_name = await geocode_location(location)
         else:
             # Default to panoramic orbit view
@@ -480,6 +557,7 @@ async def gods_eye_view(
         style=norm_style,
         hud=norm_hud,
         map_layer=map_layer,
+        target_name=target_name,
     )
 
     embed_html = generate_gev_embed_iframe(gev_url, height=420, title=f"God's Eye View: {target_name}")

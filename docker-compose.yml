@@ -11,6 +11,8 @@ services:
     image: zenith:latest
     container_name: zenith-core
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${ZENITH_PORT:-8005}:8005"
     env_file:
@@ -19,6 +21,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8005
       - ZENITH_PORT=${ZENITH_PORT:-8005}
+      - WORKER_URL=${WORKER_URL:-http://host.docker.internal:8022}
       - TZ=${USER_TIMEZONE:-${TZ:-UTC}}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_WHISPER_MODEL=${GROQ_WHISPER_MODEL:-whisper-large-v3-turbo}
@@ -35,8 +38,10 @@ services:
     volumes:
       # Persistent named volumes for isolated state preservation
       - zenith-data:/app/data
-      - zenith-static:/app/static
+      - ./zenith:/app/zenith
+      - ./static:/app/static
       - zenith-files:/tmp/zenith-files
+      - ./gods-eye-view/dist:/app/gods-eye-view/dist:ro
       # Host Integrations (OPT-IN ONLY):
       # To grant Zenith access to manage other local containers, set ALLOW_DOCKER=yes in .env
       # and uncomment the read-only docker socket line below:

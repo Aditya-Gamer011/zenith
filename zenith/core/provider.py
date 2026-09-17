@@ -268,22 +268,15 @@ async def _read_error_detail(exc: httpx.HTTPStatusError) -> str:
     if exc.response is None:
         return ""
     try:
-        body = exc.response.read()  # may already be consumed
+        body = await exc.response.aread()
         if body:
             return body.decode(errors="replace")[:800]
     except Exception:
         pass
-    # Re-issue as a minimal GET to read the error fresh (they may be consumed).
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(
-                _CHAT_URL,
-                headers=_headers(),
-                json={"model": model_for("standard"), "max_tokens": 1,
-                      "messages": [{"role": "user", "content": "ping"}]},
-            )
-            if r.status_code >= 400:
-                return r.text[:800]
+        body = exc.response.read()
+        if body:
+            return body.decode(errors="replace")[:800]
     except Exception:
         pass
     return ""
@@ -387,7 +380,11 @@ async def chat_stream_antigravity(
     """
     del tier, max_tokens
     started = time.time()
-    worker_url = os.getenv("WORKER_URL", "http://172.24.0.1:8022").rstrip("/")
+    try:
+        from .tools import _get_worker_url
+        worker_url = _get_worker_url().rstrip("/")
+    except Exception:
+        worker_url = os.getenv("WORKER_URL", "http://host.docker.internal:8022").rstrip("/")
 
     prompt_parts = []
     system_msg = ""

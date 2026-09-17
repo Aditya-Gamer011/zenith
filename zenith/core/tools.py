@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 
@@ -95,9 +96,66 @@ def catalog() -> list[dict[str, Any]]:
     return out
 
 
+EXECUTIVE_TOOL_NAMES = [
+    "delegate_task",
+    "list_agents",
+    "get_agent_status",
+    "update_user_profile",
+    "memory",
+    "graph",
+    "switch_mode",
+    "get_mode",
+    "setup_secret",
+    "get_setup_status",
+    "zenith_docs",
+]
+
+
+def executive_catalog() -> list[dict[str, Any]]:
+    """Scoped tool specs for Zenith Orchestrator's executive chat turns."""
+    from .config import settings
+    user_name = settings.user_name or "Friend"
+
+    def _personalize(val: Any) -> Any:
+        if isinstance(val, str):
+            return (val.replace("the user's", f"{user_name}'s")
+                       .replace("the user", user_name)
+                       .replace("user's", f"{user_name}'s")
+                       .replace("The user's", f"{user_name}'s")
+                       .replace("The user", user_name))
+        if isinstance(val, dict):
+            return {k: _personalize(v) for k, v in val.items()}
+        if isinstance(val, list):
+            return [_personalize(x) for x in val]
+        return val
+
+    out = []
+    for name in EXECUTIVE_TOOL_NAMES:
+        t = TOOLS.get(name)
+        if not t:
+            continue
+        desc = t["description"]
+        desc = (desc.replace("the user's", f"{user_name}'s")
+                    .replace("the user", user_name)
+                    .replace("user's", f"{user_name}'s")
+                    .replace("The user's", f"{user_name}'s")
+                    .replace("The user", user_name))
+        params = _personalize(t["parameters"])
+        out.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": desc,
+                "parameters": params,
+            },
+        })
+    return out
+
+
 async def call_tool(
     name: str,
     arguments: dict[str, Any],
+    emit: Callable | None = None,
 ) -> dict[str, Any]:
     """Validate & execute a tool by name.
 
@@ -134,7 +192,10 @@ async def call_tool(
                     "error": "Action cancelled — user didn't approve it."}
 
     try:
-        result = await tool["handler"](**validated)
+        if name == "delegate_task" and emit is not None:
+            result = await tool["handler"](**validated, emit=emit)
+        else:
+            result = await tool["handler"](**validated)
     except Exception as exc:
         return {"ok": False, "error": f"Tool '{name}' raised: {exc}"}
 
@@ -449,6 +510,60 @@ async def tool_graph(query: str = "") -> str:
 async def tool_agent(action: str, name: str = "", goal: str = "", context: str = "", agent_id: str = "") -> str:
     from zenith.tools.agent import agent
     return await agent(action, name, goal, context, agent_id)
+
+
+async def tool_delegate_task(department: str, task: str, context: str = "", synchronous: bool = True, emit: Any = None) -> str:
+    from zenith.tools.agent import delegate_task
+    return await delegate_task(department, task, context, synchronous, emit=emit)
+
+
+
+async def tool_list_agents() -> str:
+    from zenith.tools.agent import list_agents
+    return await list_agents()
+
+
+async def tool_get_agent_status(run_id: str = "") -> str:
+    from zenith.tools.agent import get_agent_status
+    return await get_agent_status(run_id)
+
+
+async def tool_hire_agent(
+    agent_id: str,
+    name: str = "",
+    department: str = "",
+    role_description: str = "",
+    system_prompt: str = "",
+    tool_names: list[str] | None = None,
+) -> str:
+    from zenith.tools.agent import hire_agent
+    return await hire_agent(agent_id, name, department, role_description, system_prompt, tool_names)
+
+
+async def tool_update_agent(
+    agent_id: str,
+    system_prompt: str = "",
+    tool_names: list[str] | None = None,
+    role_description: str = "",
+) -> str:
+    from zenith.tools.agent import update_agent
+    return await update_agent(agent_id, system_prompt, tool_names, role_description)
+
+
+async def tool_fire_agent(agent_id: str) -> str:
+    from zenith.tools.agent import fire_agent
+    return await fire_agent(agent_id)
+
+
+async def tool_inspect_agent(agent_id: str) -> str:
+    from zenith.tools.agent import inspect_agent
+    return await inspect_agent(agent_id)
+
+
+async def tool_list_available_tools(filter: str = "") -> str:
+    from zenith.tools.agent import list_available_tools
+    return await list_available_tools(filter)
+
 
 
 async def tool_calendar(action: str, text: str = "", when: str = "", event_id: str = "") -> str:
@@ -1184,21 +1299,132 @@ async def tool_vercel_env_list(project: str) -> str:
 # submit returns immediately with a task id; the worker runs the long task in the
 # background and Zenith polls it.
 
-_WORKER = os.environ.get("WORKER_URL", "http://127.0.0.1:8022")
+def _get_docker_gateway_ip() -> str | None:
+    try:
+        with open("/proc/net/route", "r") as f:
+            for line in f.readlines()[1:]:
+                fields = line.strip().split()
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    import socket, struct
+                    return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    except Exception:
+        pass
+    return None
+
+
+def _get_worker_url() -> str:
+    val = os.environ.get("WORKER_URL", "").strip().rstrip("/")
+    if val:
+        return val
+    if Path("/.dockerenv").is_file():
+        gw = _get_docker_gateway_ip()
+        if gw:
+            return f"http://{gw}:8022"
+        return "http://host.docker.internal:8022"
+    return "http://127.0.0.1:8022"
 
 
 async def _worker_get(path: str, timeout: float = 20) -> dict:
     import httpx
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        r = await client.get(f"{_WORKER}{path}")
-        return r.json()
+    worker_url = _get_worker_url()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(f"{worker_url}{path}")
+            return r.json()
+    except Exception as exc:
+        candidates = ["http://127.0.0.1:8022", "http://host.docker.internal:8022"]
+        gw = _get_docker_gateway_ip()
+        if gw:
+            candidates.insert(0, f"http://{gw}:8022")
+        for cand in candidates:
+            if cand == worker_url:
+                continue
+            try:
+                async with httpx.AsyncClient(timeout=min(timeout, 3.0)) as client:
+                    r = await client.get(f"{cand}{path}")
+                    return r.json()
+            except Exception:
+                continue
+        raise exc
 
 
 async def _worker_post(path: str, body: dict, timeout: float = 20) -> dict:
     import httpx
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        r = await client.post(f"{_WORKER}{path}", json=body)
-        return r.json()
+    worker_url = _get_worker_url()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(f"{worker_url}{path}", json=body)
+            return r.json()
+    except Exception as exc:
+        candidates = ["http://127.0.0.1:8022", "http://host.docker.internal:8022"]
+        gw = _get_docker_gateway_ip()
+        if gw:
+            candidates.insert(0, f"http://{gw}:8022")
+        for cand in candidates:
+            if cand == worker_url:
+                continue
+            try:
+                async with httpx.AsyncClient(timeout=min(timeout, 3.0)) as client:
+                    r = await client.post(f"{cand}{path}", json=body)
+                    return r.json()
+            except Exception:
+                continue
+        raise exc
+
+
+async def tool_worker_status() -> str:
+    """Check health, responsiveness, agy CLI installation, and Google OAuth authentication status of the Antigravity Coding Worker."""
+    worker_url = _get_worker_url()
+    try:
+        data = await _worker_get("/status", timeout=4.0)
+        agy_info = data.get("agy") or {}
+        tasks_info = data.get("tasks") or {}
+        is_auth = agy_info.get("authenticated", False)
+        installed = agy_info.get("installed", False)
+        path = agy_info.get("path") or "(not found)"
+        active_tasks = tasks_info.get("active", 0)
+        total_tasks = tasks_info.get("total", 0)
+
+        auth_str = "Authenticated (Autonomous background execution active)" if is_auth else "Sign-in Required (run 'agy' or './scripts/setup-worker.sh login' in terminal to link Google account)"
+        return (
+            f"Antigravity Coding Worker Status:\n"
+            f"  • Daemon Status: ONLINE (HTTP 200 OK)\n"
+            f"  • Worker URL:    {worker_url}\n"
+            f"  • agy Binary:    {'Installed at ' + path if installed else 'Not Installed'}\n"
+            f"  • Auth State:    {auth_str}\n"
+            f"  • Task Activity: {active_tasks} active / {total_tasks} total tasks\n"
+            f"  • Model/Effort:  {agy_info.get('model', 'gemini-3.1-pro-high')} (effort: {agy_info.get('effort', 'high')})"
+        )
+    except Exception as exc:
+        return (
+            f"Antigravity Coding Worker Status:\n"
+            f"  • Daemon Status: OFFLINE or Unreachable ({exc})\n"
+            f"  • Worker URL:    {worker_url}\n"
+            f"  • Host Control:  Run './scripts/setup-worker.sh start' on host to ignite daemon.\n"
+            f"  • Fallback:      Zenith Native Agent (agent tool) is active using configured GEMINI_API_KEY."
+        )
+
+
+async def tool_worker_control(action: str = "status") -> str:
+    """Manage the Antigravity Coding Worker daemon on the host (actions: 'status', 'restart', 'start', 'stop', 'login')."""
+    act = (action or "status").lower().strip()
+    if act == "status":
+        return await tool_worker_status()
+
+    if act == "login":
+        return (
+            "To authenticate Google Antigravity CLI, open a host terminal and run:\n"
+            "  ./scripts/setup-worker.sh login            (Linux / macOS)\n"
+            "  .\\scripts\\setup-worker.ps1 -Action login    (Windows PowerShell)\n"
+            "This will open a browser window for a one-time Google Sign-In."
+        )
+    if act in ("start", "restart", "stop"):
+        return (
+            f"Worker '{act}' signal noted. To manage the background daemon on the host:\n"
+            f"  Linux/macOS: ./scripts/setup-worker.sh {act}\n"
+            f"  Windows:     .\\scripts\\setup-worker.ps1 -Action {act}"
+        )
+    return f"Unknown worker action '{action}'. Available actions: status, restart, start, stop, login."
 
 
 async def tool_agent_submit(
@@ -1211,10 +1437,39 @@ async def tool_agent_submit(
     autonomy: str = "high",
     destructive: bool = False,
 ) -> str:
-    """Delegate a substantial coding/engineering task to the Antigravity worker."""
-    # Zenith distills the raw request into a structured engineering brief (it
-    # does NOT forward the user's raw message). The worker turns it into an
-    # Antigravity prompt and runs it in the background.
+    """Delegate a substantial coding/engineering task to the Antigravity worker or native agent."""
+    # Inspect worker availability and authentication state
+    worker_online = False
+    worker_auth = False
+    try:
+        health = await _worker_get("/health", timeout=2.5)
+        worker_online = (health.get("status") == "ok")
+        worker_auth = bool(health.get("authenticated", False))
+    except Exception:
+        pass
+
+    # Zero-Blocker Fallback: If worker is not authenticated or not online, activate Zenith Native Coding Agent
+    if not worker_online or not worker_auth:
+        reason = "Worker daemon offline" if not worker_online else "Worker awaiting one-time Google Sign-In ('agy')"
+        from zenith.tools.agent import agent as native_agent
+        goal_summary = f"{task.strip()}."
+        if requirements:
+            goal_summary += f" Requirements: {requirements}."
+        if constraints:
+            goal_summary += f" Constraints: {constraints}."
+        ctx = context or ""
+        if workspace:
+            ctx += f" Target workspace: {workspace}"
+
+        native_res = await native_agent("start", name="coding", goal=goal_summary, context=ctx)
+        return (
+            f"[{reason}]\n"
+            f"⚡ Seamlessly activated Zenith Native Coding Agent (powered by GEMINI_API_KEY).\n"
+            f"  {native_res}\n"
+            f"💡 Note: To enable the multi-file autonomous Antigravity CLI worker, run 'agy' once in a host terminal to sign in."
+        )
+
+    # Distill and dispatch to full autonomous Antigravity worker
     spec = {
         "task": task.strip(),
         "workspace": workspace.strip() or "",
@@ -1235,8 +1490,8 @@ async def tool_agent_submit(
         return (f"Delegated to Antigravity worker.\n"
                 f"  task id: {tid}\n"
                 f"  status:  {data.get('status')}\n"
-                f"  workspace: {data.get('workspace')} (on the Pi)\n"
-                f"I'll check its status with agent_status — ask me to, or use it now.")
+                f"  workspace: {data.get('workspace')}\n"
+                f"The worker is operating 100% autonomously in the background. Poll with agent_status or agent_output.")
     except Exception as exc:
         return f"[antigravity] submit failed: {exc}"
 
@@ -1545,6 +1800,77 @@ register("agent", "Manage specialist sub-agents for deep work. action 'start' la
     "required": ["action"],
 }, tool_agent)
 
+register("delegate_task", "Delegate a mission or specialized task to a departmental specialist agent (communication, coding, hr, research, operations, productivity, creative, utility) or custom hired agent. The agent executes autonomously using its scoped departmental toolset and returns a concise, structured report.", {
+    "type": "object",
+    "properties": {
+        "department": {"type": "string", "description": "Target department or custom agent ID ('communication', 'coding', 'hr', 'research', 'operations', 'productivity', 'creative', 'utility')."},
+        "task": {"type": "string", "description": "Clear, actionable task description or instructions for the specialist agent."},
+        "context": {"type": "string", "description": "Relevant background context, constraints, user preferences, or details needed to complete the task."},
+        "synchronous": {"type": "boolean", "description": "Whether to wait for the agent to finish and return its findings immediately (default true). Set to false for long-running background tasks."},
+    },
+    "required": ["department", "task"],
+}, tool_delegate_task)
+
+register("list_agents", "List all active agents in the organization, including built-in departments and custom hired agents, their roles, descriptions, and tool counts.", {
+    "type": "object",
+    "properties": {},
+}, tool_list_agents)
+
+register("get_agent_status", "Check the status and fetch results of a delegated agent run.", {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string", "description": "Hex ID of the agent run (optional, leave blank to list all recent runs)."},
+    },
+}, tool_get_agent_status)
+
+register("hire_agent", "Hire, configure, and register a new specialized autonomous agent with a custom system prompt and allocated toolset. Persisted in SQLite across restarts.", {
+    "type": "object",
+    "properties": {
+        "agent_id": {"type": "string", "description": "Unique identifier slug for the agent (e.g. 'security_auditor', 'astro_tracker')."},
+        "name": {"type": "string", "description": "Human-friendly display name for the agent (e.g. 'Security Auditor')."},
+        "department": {"type": "string", "description": "Department name or division (e.g. 'Security & Compliance')."},
+        "role_description": {"type": "string", "description": "Brief description of the agent's primary role and duties."},
+        "system_prompt": {"type": "string", "description": "Domain-tailored system prompt defining the agent's behavior, instructions, and constraints."},
+        "tool_names": {"type": "array", "items": {"type": "string"}, "description": "List of system tool names to allocate to this agent."},
+    },
+    "required": ["agent_id", "system_prompt"],
+}, tool_hire_agent)
+
+register("update_agent", "Update the system prompt, tool allocation, or description of an existing custom agent.", {
+    "type": "object",
+    "properties": {
+        "agent_id": {"type": "string", "description": "Unique identifier slug of the agent to update."},
+        "system_prompt": {"type": "string", "description": "Updated system prompt instructions."},
+        "tool_names": {"type": "array", "items": {"type": "string"}, "description": "Updated list of tool names allocated to this agent."},
+        "role_description": {"type": "string", "description": "Updated brief role description."},
+    },
+    "required": ["agent_id"],
+}, tool_update_agent)
+
+register("fire_agent", "Retire and remove a custom agent from the active organization roster.", {
+    "type": "object",
+    "properties": {
+        "agent_id": {"type": "string", "description": "Unique identifier slug of the custom agent to retire."},
+    },
+    "required": ["agent_id"],
+}, tool_fire_agent)
+
+register("inspect_agent", "Inspect the full profile, system prompt, and allocated tools of any agent in the organization.", {
+    "type": "object",
+    "properties": {
+        "agent_id": {"type": "string", "description": "Unique identifier slug of the agent to inspect."},
+    },
+    "required": ["agent_id"],
+}, tool_inspect_agent)
+
+register("list_available_tools", "List all system tools available in Zenith with descriptions to help People Operations / HR allocate tools to new agents.", {
+    "type": "object",
+    "properties": {
+        "filter": {"type": "string", "description": "Optional keyword to filter tools by name or description."},
+    },
+}, tool_list_available_tools)
+
+
 register("agent_submit", "Delegate a substantial coding/engineering task to the Antigravity worker (a full coding agent on the Pi). Use for 'build', 'create', 'implement', 'refactor', 'port', 'fix a bug across files', 'docker set up', 'web app/service/project', etc. The worker runs in the background and you can poll agent_status / agent_output / agent_artifacts and send agent_followup. Distill the user's intent into a tight brief (task, workspace, requirements|constraints|acceptance separated by '|').", {
     "type": "object",
     "properties": {
@@ -1592,6 +1918,19 @@ register("agent_cancel", "Cancel a queued/running Antigravity worker task.", {
     "properties": {"task_id": {"type": "string"}},
     "required": ["task_id"],
 }, tool_agent_cancel)
+
+register("worker_status", "Check health, responsiveness, agy CLI installation, and Google OAuth authentication status of the Antigravity Coding Worker.", {
+    "type": "object",
+    "properties": {},
+}, tool_worker_status)
+
+register("worker_control", "Manage the Antigravity Coding Worker daemon on the host (actions: 'status', 'restart', 'start', 'stop', 'login').", {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["status", "restart", "start", "stop", "login"], "description": "Worker management action."}
+    },
+    "required": ["action"],
+}, tool_worker_control)
 
 # ── read-only admin ────────────────────────────────────────────────────────────
 register("docker_list", "List all Docker containers and their status.", {
@@ -2642,10 +2981,10 @@ register("get_mode", "Get Zenith's current operating mode (setup vs sovereign) a
     "properties": {},
 }, tool_get_mode)
 
-register("update_user_profile", "Update user identity and starter profile: name, email, timezone, bio/background. Persists to settings and long-term memory.", {
+register("update_user_profile", "Update user identity and starter profile: name, email, timezone, bio/background. Call this tool immediately whenever the user provides, corrects, or asks to change/fix their name or dashboard identity (e.g. 'call me Aditya', 'my name is X', 'the dashboard still says Maya... pls fix'). Persists to .env, runtime settings, and long-term memory.", {
     "type": "object",
     "properties": {
-        "name": {"type": "string", "default": "", "description": "User's display name or preferred name."},
+        "name": {"type": "string", "default": "", "description": "User's display name or preferred name (e.g. 'Aditya')."},
         "email": {"type": "string", "default": "", "description": "User's primary email address."},
         "timezone": {"type": "string", "default": "", "description": "User's local timezone (e.g. Asia/Kolkata, America/New_York)."},
         "bio": {"type": "string", "default": "", "description": "Background, projects, preferences, or workflow details."}

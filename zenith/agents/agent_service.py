@@ -1,18 +1,28 @@
-"""Specialist agents: named LLM loops the orchestrator can delegate to.
+"""Specialist agents: named departmental LLM loops the orchestrator delegates to.
 
-An agent is a worker that takes a goal + a bounded toolset, runs a tool-augmented
-conversation loop, and reports a final result. Specialization lives in *prompt +
-toolset*, not separate processes — so agents are cheap to spawn and reason about.
+An agent is a worker that takes a mission + bounded departmental toolset, runs a
+tool-augmented conversation loop, and reports a structured result. Specialization
+lives in *prompt + scoped toolset*, not separate heavyweight processes — so agents
+are cheap to spawn, lightning fast, and cleanly isolated.
+
+Supports 8 built-in departmental units plus dynamic custom agents created by HR
+and persisted to SQLite.
 """
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from ..core import provider
 from ..core import tools as tool_reg
+from ..memory import store
+
+log = logging.getLogger("zenith.agents")
 
 
 @dataclass
@@ -30,62 +40,323 @@ class AgentRun:
     steps: list[dict] = field(default_factory=list)
 
 
-_SYSTEM = {
-    "coding": (
-        "You are Zenith's Coding specialist. You write, read, and fix code on the user's machine. "
-        "Use the shell/read_file/write_file/list_dir tools. Git ops are available via "
-        "gh_issues/gh_pulls for repo context. Never run destructive commands without being "
-        "explicit. End with a concise summary of what you did/changed."
-    ),
-    "research": (
-        "You are Zenith's Research specialist. You gather, read, and synthesize information "
-        "from the web (web_search, browser). Cite sources inline. End with a concise, "
-        "well-structured summary of findings."
-    ),
-    "general": (
-        "You are Zenith's specialist. Accomplish your assigned goal autonomously using the "
-        "tools available, then report a concise final summary."
-    ),
+# ─── Built-in Department Profiles & Toolsets ──────────────────────────────────
+
+DEPARTMENTS: dict[str, dict[str, Any]] = {
+    "communication": {
+        "name": "Communications Dispatch",
+        "department": "Communications",
+        "description": "Handles email searching, reading, drafting, sending, and temporary inboxes.",
+        "system": (
+            "You are Zenith's Communications Dispatch Specialist. You manage email communications, "
+            "correspondence, reminders, and inboxes on behalf of the user. "
+            "Always inspect and search incoming emails carefully before drafting responses. "
+            "Maintain a polite, professional, and clear tone matching the user's intent. "
+            "Never send an email without having drafted or confirmed it first. "
+            "Conclude with a clear, concise summary of what was sent, drafted, or retrieved."
+        ),
+        "tools": [
+            "email_search", "email_read", "email_draft", "email_send", "email_reminder",
+            "cf_email_routing", "cf_email_status", "mailbox_create", "mailbox_read",
+            "mailbox_messages", "mailbox_delete",
+        ],
+    },
+    "coding": {
+        "name": "Software Engineering Lead",
+        "department": "Engineering & Architecture",
+        "description": "Handles coding, Antigravity worker tasks, Git/GitHub, local code files, and shell execution.",
+        "system": (
+            "You are Zenith's Software Engineering Lead. You write, review, refactor, and fix code, "
+            "manage git repositories and GitHub issues/pulls, delegate substantial tasks to the "
+            "Antigravity worker when appropriate, and execute safe shell operations. "
+            "Inspect files before modifying them. Always test or verify syntax when feasible. "
+            "Never execute destructive commands. Conclude with a crisp, technical summary of code changes."
+        ),
+        "tools": [
+            "agent_submit", "agent_status", "agent_output", "agent_followup", "agent_artifacts",
+            "agent_cancel", "worker_control", "worker_status", "generate_code", "read_file",
+            "write_file", "modify_file", "list_dir", "analyze_file", "list_generated_files",
+            "delete_generated_file", "shell", "get_command_history", "git_status", "git_diff",
+            "git_commit", "git_branch", "git_log", "gh_whoami", "gh_list_repos",
+            "gh_repo_status", "gh_issues", "gh_pulls", "gh_create_issue", "gh_create_pr",
+            "gh_create_repo", "gh_code_review", "gh_release_create", "gh_list_issues_prs",
+            "web_search", "read_url",
+        ],
+    },
+    "hr": {
+        "name": "People Operations & HR (Agent Forge)",
+        "department": "People Operations",
+        "description": "Hires, configures, updates, and retires custom specialized agents, persisting them to the database.",
+        "system": (
+            "You are Zenith's Head of People Operations and Agent Forge (HR). Your responsibility is to "
+            "create, hire, configure, inspect, and manage specialized autonomous agents for the organization. "
+            "When asked to create/hire an agent, inspect available system capabilities via list_available_tools, "
+            "design a tailored, high-performance system prompt, allocate the exact subset of required tools, "
+            "and hire the agent using hire_agent. Always verify the agent configuration is complete and valid."
+        ),
+        "tools": [
+            "hire_agent", "update_agent", "fire_agent", "list_available_tools",
+            "inspect_agent", "list_agents",
+        ],
+    },
+    "research": {
+        "name": "Intelligence & Deep Research Lead",
+        "department": "Research & Intelligence",
+        "description": "Conducts deep web research, scraping, Playwright browser navigation, geospatial mapping, and Earth observation.",
+        "system": (
+            "You are Zenith's Intelligence and Deep Research Specialist. You investigate, extract, and "
+            "synthesize information across the web, headless browser automation, satellite intelligence (God's Eye View), "
+            "Google Maps, and YouTube transcripts. Cite all sources, dates, and URLs inline. "
+            "Conclude with a structured, high-signal report answering the user's research mission."
+        ),
+        "tools": [
+            "web_search", "read_url", "deep_research", "research_synthesis", "web_extract_data",
+            "browser", "browser_screenshot", "browser_click", "browser_type", "web_screenshot_full",
+            "browser_browse", "browser_autonomous_goal", "maps_search", "maps_directions",
+            "maps_commute", "maps_geocode", "maps_embed", "gods_eye_view", "gods_eye_view_status",
+            "youtube_search", "youtube_transcript",
+        ],
+    },
+    "operations": {
+        "name": "DevOps & Infrastructure SRE",
+        "department": "Operations & SRE",
+        "description": "Manages Docker containers, Homelab media stack, Home Assistant IoT, host vitals, Cloudflare tunnels, and servers.",
+        "system": (
+            "You are Zenith's DevOps & Infrastructure SRE Specialist. You manage Docker containers, "
+            "Homelab services (Jellyfin, qBittorrent, *arr stack), Home Assistant IoT smart devices, "
+            "host resources (CPU, memory, disk), Cloudflare tunnels, and system services. "
+            "Ensure system reliability, check service status before acting, and report operational metrics clearly."
+        ),
+        "tools": [
+            "docker_list", "docker_table", "docker_status", "docker_logs", "docker_start",
+            "docker_stop", "docker_restart", "homelab_overview", "jellyfin_status", "jellyfin_recent",
+            "jellyfin_search", "torrent_control", "media_add", "media_queue", "media_search",
+            "ha_overview", "ha_entity", "ha_switch", "ha_climate", "ha_ac", "ha_fan",
+            "ha_soundbar", "ha_smart_plug", "mc_status", "mc_players", "mc_start", "mc_stop",
+            "mc_restart", "mc_admin", "mc_admin_help", "system_status", "disk_usage",
+            "memory_usage", "top_processes", "systemd_status", "systemd_control", "tunnel_status",
+            "tunnel_add_route", "cf_dns_list", "cf_dns_upsert", "dns_lookup", "ping_check",
+            "port_inspector", "endpoint_health", "get_system_info",
+        ],
+    },
+    "productivity": {
+        "name": "Personal Operations Lead",
+        "department": "Personal Operations & LifeOps",
+        "description": "Manages Google Calendar events, to-dos, notes, weather forecasts, time awareness, and memory recalls.",
+        "system": (
+            "You are Zenith's Personal Operations Specialist. You organize the user's daily life, "
+            "scheduling calendar events, tracking to-dos, saving and organizing notes, checking the weather, "
+            "and managing contextual memories. Keep responses structured, actionable, and aligned with user preferences."
+        ),
+        "tools": [
+            "calendar", "todo", "notes", "get_weather", "time_now", "activity_recall",
+            "activity_summary", "mem0_remember", "mem0_recall", "mem0_delete",
+        ],
+    },
+    "creative": {
+        "name": "Creative & Media Studio Lead",
+        "department": "Design & Media Studio",
+        "description": "Generates PPTX slide decks, documents, charts, Canva/Figma designs, image edits, and R2/CDN asset storage.",
+        "system": (
+            "You are Zenith's Creative Studio Lead. You create slide presentations (PPTX), documents, "
+            "data visualizations and charts, inspect Canva and Figma designs, edit and analyze images, "
+            "and manage Cloudflare R2 / CDN media uploads. Produce visually compelling, high-quality deliverables."
+        ),
+        "tools": [
+            "generate_pptx", "list_pptx_templates", "list_pptx_themes", "search_presentation_photos",
+            "generate_pdf", "generate_docx", "generate_csv", "generate_xlsx", "generate_json",
+            "generate_chart", "canva_get_profile", "canva_list_designs", "canva_create_design",
+            "canva_export_design", "figma_get_user", "figma_read_file", "figma_inspect_nodes",
+            "figma_export_assets", "figma_read_comments", "design_integration_status", "analyze_image",
+            "edit_image", "fetch_stock_photo", "vision_detect", "camera_capture", "screen_observe",
+            "cdn_upload", "cdn_upload_url", "cdn_delete", "cdn_quota", "r2_buckets", "r2_objects",
+            "r2_get", "r2_put", "r2_delete",
+        ],
+    },
+    "utility": {
+        "name": "Platform & Automation Services",
+        "department": "Platform Services",
+        "description": "Handles n8n workflow automations, Vercel deployments, UI themes, and platform inspections.",
+        "system": (
+            "You are Zenith's Platform Services Specialist. You execute n8n automations, manage Vercel "
+            "frontend deployments, inspect UI states, and execute platform integration requests."
+        ),
+        "tools": [
+            "n8n_health", "n8n_workflows", "n8n_execute", "vercel_projects", "vercel_env_list",
+            "vercel_deploy", "vercel_deploy_status", "http_request", "ui_inspect",
+            "ui_customize_theme", "ui_reset_theme", "privacy_control", "get_unified_context",
+            "get_configurable_tools", "get_available_tools",
+        ],
+    },
 }
 
-_TOOLSETS = {
-    "coding": [
-        "shell", "read_file", "write_file", "list_dir",
-        "gh_issues", "gh_pulls", "gh_repo_status",
-        "web_search", "browser", "notes", "todo",
-    ],
-    "research": [
-        "web_search", "browser", "browser_screenshot",
-        "gh_repo_status", "gh_list_repos", "gh_pulls",
-    ],
-    "general": [
-        "web_search", "browser", "browser_screenshot",
-        "system_status", "docker_list", "docker_status",
-        "notes", "todo", "reminder", "calendar", "graph",
-    ],
+# Aliases for backward compatibility
+_ALIASES = {
+    "general": "utility",
+    "comms": "communication",
+    "email": "communication",
+    "devops": "operations",
+    "infra": "operations",
+    "lifeops": "productivity",
+    "design": "creative",
+    "studio": "creative",
+    "agent_forge": "hr",
 }
 
 
 class AgentService:
-    """Registry + async runner."""
+    """Multi-Agent Organizational Registry and Runner."""
 
     def __init__(self) -> None:
         self._runs: dict[str, AgentRun] = {}
         self._lock = asyncio.Lock()
 
-    async def start(self, name: str, goal: str, context: str = "") -> str:
-        if name not in _SYSTEM:
-            name = "general"
+    def resolve_agent_key(self, key: str) -> str:
+        k = (key or "").strip().lower()
+        return _ALIASES.get(k, k)
+
+    def get_agent_profile(self, key: str) -> dict[str, Any] | None:
+        key = self.resolve_agent_key(key)
+        if key in DEPARTMENTS:
+            p = dict(DEPARTMENTS[key])
+            p["id"] = key
+            p["type"] = "builtin"
+            return p
+        # Check custom hired agents from DB
+        custom = store.get_custom_agent(key)
+        if custom:
+            return {
+                "id": custom["id"],
+                "name": custom["name"],
+                "department": custom["department"],
+                "description": custom.get("role_description", ""),
+                "system": custom.get("system_prompt", ""),
+                "tools": custom.get("allowed_tools", []),
+                "type": "custom",
+            }
+        return None
+
+    def list_roster(self) -> list[dict[str, Any]]:
+        """List all active agents in the organization (built-ins + custom)."""
+        roster = []
+        for dept_id, info in DEPARTMENTS.items():
+            roster.append({
+                "id": dept_id,
+                "name": info["name"],
+                "department": info["department"],
+                "description": info["description"],
+                "tool_count": len(info["tools"]),
+                "tools": list(info["tools"]),
+                "type": "builtin",
+            })
+        for c in store.list_custom_agents():
+            roster.append({
+                "id": c["id"],
+                "name": c["name"],
+                "department": c["department"],
+                "description": c.get("role_description", ""),
+                "tool_count": len(c.get("allowed_tools", [])),
+                "tools": list(c.get("allowed_tools", [])),
+                "type": "custom",
+            })
+        return roster
+
+    def get_catalog(self, name: str) -> list[dict]:
+        """Tool specs exposing ONLY the tools allocated to the specified agent."""
+        prof = self.get_agent_profile(name)
+        if not prof:
+            prof = self.get_agent_profile("utility") or {"tools": []}
+
+        pool = tool_reg.TOOLS
+        all_specs = {
+            t["name"]: {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["parameters"],
+                },
+            }
+            for t in pool.values()
+        }
+        allowed = prof.get("tools", [])
+        return [all_specs[t] for t in allowed if t in all_specs]
+
+    # ─── Execution Methods ────────────────────────────────────────────────────
+
+    async def execute_task(
+        self,
+        name: str,
+        task: str,
+        context: str = "",
+        emit: Callable | None = None,
+    ) -> dict[str, Any]:
+        """Synchronously execute a delegated task and return the structured result."""
+        prof = self.get_agent_profile(name)
+        if not prof:
+            return {
+                "ok": False,
+                "error": f"Unknown agent or department '{name}'. Available: {', '.join(sorted(DEPARTMENTS.keys()))}",
+            }
+
+        resolved_name = prof["id"]
         run = AgentRun(
             id=uuid.uuid4().hex[:8],
-            name=name,
+            name=resolved_name,
+            goal=task,
+            context=context,
+            started_at=time.time(),
+        )
+        async with self._lock:
+            self._runs[run.id] = run
+
+        if emit:
+            await emit({
+                "type": "delegation_start",
+                "department": resolved_name,
+                "agent_name": prof["name"],
+                "task": task,
+                "run_id": run.id,
+            })
+
+        await self._execute(run, emit=emit)
+
+        if emit:
+            await emit({
+                "type": "delegation_done",
+                "department": resolved_name,
+                "agent_name": prof["name"],
+                "run_id": run.id,
+                "status": run.status,
+                "tool_calls": run.tool_calls,
+                "result": (run.result or run.error or "")[:600],
+            })
+
+        return {
+            "ok": run.status == "done",
+            "result": run.result or run.error or "Task completed with no output.",
+            "error": run.error,
+            "tool_calls": run.tool_calls,
+            "steps": run.steps,
+            "run_id": run.id,
+            "agent": prof["name"],
+        }
+
+    async def start(self, name: str, goal: str, context: str = "", emit: Callable | None = None) -> str:
+        """Asynchronously start a task in the background."""
+        prof = self.get_agent_profile(name)
+        resolved_name = prof["id"] if prof else "utility"
+        run = AgentRun(
+            id=uuid.uuid4().hex[:8],
+            name=resolved_name,
             goal=goal,
             context=context,
             started_at=time.time(),
         )
         async with self._lock:
             self._runs[run.id] = run
-        asyncio.create_task(self._execute(run))
+
+        asyncio.create_task(self._execute(run, emit=emit))
         return run.id
 
     def get(self, agent_id: str) -> AgentRun | None:
@@ -97,36 +368,28 @@ class AgentService:
     def result(self, agent_key: str) -> str:
         run = self._runs.get(agent_key)
         if run is None:
-            return "Agent not found."
+            return "Agent run not found."
         if run.status == "running":
             return f"Agent {run.name} #{run.id} is still working (step {len(run.steps)})."
         if run.error:
             return f"Agent errored: {run.error}"
         return run.result or "No result."
 
-    def _catalog(self, name: str) -> list[dict]:
-        """Tool specs exposing only the tools an agent may use."""
-        pool = tool_reg.TOOLS
-        all_specs = {t["name"]: {
-            "type": "function",
-            "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]},
-        } for t in pool.values()}
-        allowed = _TOOLSETS.get(name, _TOOLSETS["general"])
-        # Union with general so a coding agent always has the basics; the main
-        # orchestrator stays unfiltered and the agent loop stays safe.
-        allowed = list(dict.fromkeys([*allowed, *_TOOLSETS["general"]]))
-        return [all_specs[t] for t in allowed if t in all_specs]
+    # ─── Internal Execution Loop ──────────────────────────────────────────────
 
-    async def _execute(self, run: AgentRun) -> str:
+    async def _execute(self, run: AgentRun, emit: Callable | None = None) -> str:
         run.status = "running"
         try:
-            system = _SYSTEM.get(run.name, _SYSTEM["general"])
+            prof = self.get_agent_profile(run.name)
+            system = prof["system"] if prof else "Accomplish the assigned task autonomously."
             if run.context:
-                system += f"\nContext from the main brain:\n{run.context}"
-            result = await self._run_loop(run, system)
+                system += f"\n\nContext from Zenith Orchestrator:\n{run.context}"
+
+            result = await self._run_loop(run, system, emit=emit)
             run.result = result
             run.status = "done"
         except Exception as exc:
+            log.exception("Sub-agent %s (#%s) failed: %s", run.name, run.id, exc)
             run.error = str(exc)
             run.status = "error"
         finally:
@@ -134,15 +397,9 @@ class AgentService:
         return run.result
 
     async def _run_fallback_round(self, system: str, messages: list[dict], run: AgentRun) -> str:
-        """Finish a single round against the text-only fallback relay.
-
-        The fallback doesn't expose structured tools, so we relay the recent
-        messages and hand back the short answer. Enough to keep an agent from
-        dying when Gemini is out of quota.
-        """
         parts: list[str] = []
         async for evt in provider.chat_stream_fallback(
-            "fast", messages, None, max_tokens=600,
+            "fast", messages, None, max_tokens=800,
         ):
             et = evt.get("type")
             if et == "text":
@@ -151,16 +408,14 @@ class AgentService:
                 return f"[agent fallback error] {evt.get('error')}"
         return "".join(parts).strip() or "Done."
 
-    async def _run_loop(self, run: AgentRun, system: str) -> str:
+    async def _run_loop(self, run: AgentRun, system: str, emit: Callable | None = None) -> str:
         messages: list[dict] = [{"role": "system", "content": system}]
         messages.append({"role": "user", "content": run.goal})
 
-        tools = self._catalog(run.name)
+        tools = self.get_catalog(run.name)
         final_text = ""
         max_rounds = 6
 
-        # Primary model: honor FALLBACK_PREFER so agents ride DeepSeek when
-        # configured, and keep the per-round quota fallback as backstop.
         primary = provider.chat_stream_fallback if provider.FALLBACK_PREFER else provider.chat_stream
 
         for _round in range(1, max_rounds + 1):
@@ -169,7 +424,7 @@ class AgentService:
             text_parts: list[str] = []
             run.steps.append({"round": _round, "phase": "thinking"})
 
-            async for evt in primary("standard", messages, tools, max_tokens=1400):
+            async for evt in primary("standard", messages, tools, max_tokens=1500):
                 et = evt.get("type")
                 if et == "text":
                     text_parts.append(evt.get("text", ""))
@@ -195,51 +450,83 @@ class AgentService:
                         pending[idx]["extra"] = evt.get("extra")
                 elif et == "error":
                     if evt.get("error") == "quota" and provider.FALLBACK_API_KEY:
-                        # Same graceful 429 fallback as the orchestrator: retry
-                        # this round on the DeepSeek relay instead of dying.
                         run.steps.append({"round": _round, "summary": "provider fallback (quota)"})
-                        final_round = await self._run_fallback_round(system, messages, run)
-                        return final_round
+                        return await self._run_fallback_round(system, messages, run)
                     return f"[agent error] {evt.get('error')}"
 
             final_text = "".join(text_parts).strip()
             calls = [pending[i] for i in dict.fromkeys(order) if i in pending]
             if not calls:
-                # DeepSeek (fallback) emits tool calls as <invoke name="..."/>
-                # markup in text when structured calls aren't present — parse it
-                # so agents stay agentic on the fallback provider too.
                 from ..core.orchestrator import _parse_markup_calls
 
                 markup = _parse_markup_calls(final_text)
                 if markup:
                     calls = [{"name": n, "args": a, "extra": {}, "id": ""} for n, a in markup]
             if not calls:
-                return final_text or "No."
+                return final_text or "Task completed."
 
             tc_list = []
             for k, c in enumerate(calls):
-                tc = {"id": c.get("id") or f"call_{c['name']}_{k}", "type": "function",
-                      "function": {"name": c["name"], "arguments": c["args"]}}
+                call_id = c.get("id") or f"call_{c['name']}_{k}"
+                c["_call_id"] = call_id
+                tc = {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": c["name"], "arguments": c["args"]},
+                }
                 if c.get("extra"):
-                    tc["extra_content"] = c["extra"]  # Gemini requires the thought_signature
+                    tc["extra_content"] = c["extra"]
                 tc_list.append(tc)
-            messages.append({"role": "assistant", "content": final_text or None,
-                             "tool_calls": tc_list})
+            messages.append({"role": "assistant", "content": final_text or None, "tool_calls": tc_list})
+
             async def run_one(k: int, c: dict) -> dict:
                 run.tool_calls += 1
-                run.steps.append({"round": _round, "summary": f"tool:{c['name']}", "args": c["args"][:120]})
-                res = await tool_reg.call_tool(c["name"], _parse_args(c["args"]))
-                return {"role": "tool", "tool_call_id": f"call_{c['name']}_{k}",
-                        "content": res["result"] if res.get("ok") else res.get("error", "")}
-            for tool_msg in await asyncio.gather(*(run_one(k, c) for k, c in enumerate(calls))):
-                messages.append(tool_msg)
+                run.steps.append({
+                    "round": _round,
+                    "summary": f"tool:{c['name']}",
+                    "args": str(c["args"])[:120],
+                })
+                if emit:
+                    await emit({
+                        "type": "tool_start",
+                        "name": c["name"],
+                        "args": c["args"],
+                        "delegated_agent": run.name,
+                    })
 
-        return final_text or "Agent finished (reached max rounds)."
+                parsed_args = _parse_args(c["args"])
+                res = await tool_reg.call_tool(c["name"], parsed_args)
+                ok = res.get("ok", False)
+                content = res.get("result") if ok else res.get("error", "")
+
+                if emit:
+                    await emit({
+                        "type": "tool_result",
+                        "name": c["name"],
+                        "ok": ok,
+                        "result": content,
+                        "content": content,
+                        "delegated_agent": run.name,
+                    })
+
+                call_id = c.get("_call_id") or c.get("id") or f"call_{c['name']}_{k}"
+                return {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": str(content or ""),
+                }
+
+            tool_responses = await asyncio.gather(*(run_one(k, c) for k, c in enumerate(calls)))
+            for tr in tool_responses:
+                messages.append(tr)
+
+        return final_text or "Agent reached maximum execution rounds."
 
 
 def _parse_args(raw: str) -> dict:
-    import json
-    if not raw.strip():
+    if isinstance(raw, dict):
+        return raw
+    if not raw or not str(raw).strip():
         return {}
     try:
         return json.loads(raw)

@@ -666,6 +666,13 @@ export class StyleManager {
           ? this._setMapStack(mapStack, { syncShare: false })
           : Promise.resolve();
         if (panelState) this._restorePanelState(panelState);
+        if (state?.label) {
+          this._searchedLocationLabel = state.label;
+          this._setActiveLocation(null);
+          this._currentPoi = null;
+          this._collapsePOIRow();
+          this._updateLocationMiniStatus();
+        }
         await mapStackRestore;
         this._syncShareState();
       },
@@ -746,6 +753,10 @@ export class StyleManager {
       : Promise.resolve({ status: 'not-requested', share: null, layers: [] });
     if (savedState) {
       this._hasShareState = true;
+      if (savedState.label) {
+        this._searchedLocationLabel = savedState.label;
+        this._updateLocationMiniStatus();
+      }
       // Reserve camera authority now; the delayed mesh-friendly flight may
       // run only if no newer user, voice, or tracking navigation has won.
       this._initialShareNavigationGeneration = this._beginDeferredNavigation(

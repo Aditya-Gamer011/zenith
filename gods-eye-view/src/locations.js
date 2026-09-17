@@ -339,6 +339,49 @@ export function findPoiByName(query) {
   return best ? { cityId: best.cityId, index: best.index } : null;
 }
 
+/**
+ * Try parsing raw latitude and longitude from user search input.
+ * Supports:
+ *   - "37.7749, -122.4194" or "37.7749 -122.4194"
+ *   - "48.8584° N, 2.2945° E" or "33.8568 S, 151.2153 W"
+ *   - "lat: 37.77, lon: -122.42"
+ * Returns { lat: number, lng: number, label: string } or null.
+ */
+export function parseQueryCoordinates(query) {
+  const s = String(query || '').trim();
+  if (!s) return null;
+
+  // 1. Compass directions e.g. 48.8584 N, 2.2945 E
+  const compassMatch = s.match(/([0-9]+(?:\.[0-9]+)?)\s*°?\s*([NSns])[,\s]+([0-9]+(?:\.[0-9]+)?)\s*°?\s*([EWew])/);
+  if (compassMatch) {
+    const lat = parseFloat(compassMatch[1]) * (/s/i.test(compassMatch[2]) ? -1 : 1);
+    const lng = parseFloat(compassMatch[3]) * (/w/i.test(compassMatch[4]) ? -1 : 1);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return {
+        lat,
+        lng,
+        label: `Target (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+      };
+    }
+  }
+
+  // 2. Standard decimal pair e.g. "48.8584, 2.2945" or "48.8584 -122.4194"
+  const decMatch = s.match(/(?:lat(?:itude)?[:\s=]+)?([-+]?[0-9]+(?:\.[0-9]+)?)[,\s]+(?:lon(?:gitude)?|lng)?[:\s=]*([-+]?[0-9]+(?:\.[0-9]+)?)/i);
+  if (decMatch) {
+    const lat = parseFloat(decMatch[1]);
+    const lng = parseFloat(decMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return {
+        lat,
+        lng,
+        label: `Target (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+      };
+    }
+  }
+
+  return null;
+}
+
 /** Distinguishes an authority veto from a genuine not-found result. */
 export const CANCELLED_SEARCH = Object.freeze({ cancelled: true });
 

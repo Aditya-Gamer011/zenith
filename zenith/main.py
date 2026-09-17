@@ -319,13 +319,27 @@ async def health():
         "memory": store.graph_stats(),
         "allow_shell": settings.allow_shell,
         "docker_socket": bool(settings.docker_socket),
-        "integrations": _integration_status(),
+        "integrations": await _integration_status(),
     }
 
 
-def _integration_status() -> dict:
+async def _integration_status() -> dict:
     """One-line per-service capability status for the UI/health."""
     from zenith.tools import mail, integrations
+    from pathlib import Path
+
+    worker_ok = False
+    try:
+        token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+        if token_path.is_file() and token_path.stat().st_size > 0:
+            worker_ok = True
+        else:
+            from zenith.core.tools import _worker_get
+            res = await _worker_get("/health", timeout=0.5)
+            if res and res.get("status") == "ok":
+                worker_ok = True
+    except Exception:
+        pass
 
     return {
         "gmail_read": mail._imap_ok(),
@@ -336,6 +350,7 @@ def _integration_status() -> dict:
         "r2": integ_r2_ok(),
         "vercel": bool(settings.vercel_token),
         "home_assistant": bool(settings.home_assistant_token),
+        "antigravity_worker": worker_ok,
     }
 
 
@@ -449,6 +464,20 @@ async def briefing():
     from .core.briefing import build_briefing
 
     return await build_briefing()
+
+
+_active_chat_turns: set[asyncio.Task] = set()
+
+
+@app.post("/api/chat/stop")
+async def stop_chat():
+    """Cancel any active chat generation tasks."""
+    cancelled = 0
+    for task in list(_active_chat_turns):
+        if not task.done():
+            task.cancel()
+            cancelled += 1
+    return {"status": "ok", "stopped": cancelled}
 
 
 @app.post("/api/clear")
@@ -631,11 +660,117 @@ async def api_voice_status():
 @app.get("/api/agents")
 async def agents():
     runs = runner.list()
-    return {"agents": [{"id": r.id, "name": r.name, "status": r.status,
-                        "goal": r.goal,
-                        "steps": len(r.steps),
-                        "recent": r.steps[-4:],
-                        "result": r.result[:400]} for r in runs]}
+    roster = runner.list_roster()
+    return {
+        "ok": True,
+        "roster": roster,
+        "agents": [{
+            "id": r.id, "name": r.name, "status": r.status,
+            "goal": r.goal, "steps": len(r.steps),
+            "tool_calls": getattr(r, "tool_calls", 0),
+            "recent": r.steps[-4:],
+            "result": (r.result or "")[:400],
+        } for r in runs],
+    }
+
+
+@app.get("/api/agents/roster")
+async def api_agents_roster():
+    """Returns organizational roster of departments, custom agents, and active runs."""
+    return {
+        "ok": True,
+        "roster": runner.list_roster(),
+        "active_runs": [{
+            "id": r.id, "name": r.name, "status": r.status,
+            "goal": r.goal, "steps": len(r.steps),
+            "tool_calls": getattr(r, "tool_calls", 0),
+        } for r in runner.list()],
+    }
+
+
+@app.get("/api/agents/tools")
+async def api_agents_tools(filter: str = ""):
+    """Returns available tools in the catalog for HR allocation."""
+    from zenith.core import tools as _tool_reg
+    flt = (filter or "").lower().strip()
+    tools_list = []
+    for name, t in sorted(_tool_reg.TOOLS.items()):
+        desc = t.get("description", "")
+        if flt and (flt not in name.lower() and flt not in desc.lower()):
+            continue
+        tools_list.append({
+            "name": name,
+            "description": desc,
+            "parameters": t.get("parameters", {}),
+        })
+    return {"ok": True, "count": len(tools_list), "tools": tools_list}
+
+
+@app.post("/api/agents/hire")
+async def api_hire_agent(request: Request):
+    """Hire a new custom specialist agent persisted to SQLite."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+
+    from zenith.tools.agent import hire_agent
+    msg = await hire_agent(
+        agent_id=data.get("id") or data.get("agent_id") or "",
+        name=data.get("name") or "",
+        department=data.get("department") or "",
+        role_description=data.get("role_description") or "",
+        system_prompt=data.get("system_prompt") or "",
+        tool_names=data.get("tools") or data.get("allowed_tools") or data.get("tool_names") or [],
+    )
+    ok = not msg.startswith("Error:") and not msg.startswith("Failed")
+    return {"ok": ok, "message": msg}
+
+
+@app.delete("/api/agents/{agent_id}")
+async def api_fire_agent(agent_id: str):
+    """Fire and retire a custom specialist agent."""
+    from zenith.tools.agent import fire_agent
+    msg = await fire_agent(agent_id)
+    ok = "Successfully" in msg
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/agents/{agent_id}")
+async def api_inspect_agent(agent_id: str):
+    """Inspect full details of an agent or department."""
+    prof = runner.get_agent_profile(agent_id)
+    if not prof:
+        return JSONResponse({"ok": False, "error": f"Agent '{agent_id}' not found."}, status_code=404)
+    return {"ok": True, "profile": prof}
+
+
+
+@app.get("/api/worker/status")
+async def api_worker_status():
+    """Check connectivity and operational readiness of the host Antigravity Worker."""
+    from zenith.core.tools import _get_worker_url, _worker_get
+
+    worker_url = _get_worker_url()
+    try:
+        data = await _worker_get("/health", timeout=3.0)
+        return {
+            "online": True,
+            "worker_url": worker_url,
+            "agy_installed": data.get("agy_installed", False),
+            "authenticated": data.get("authenticated", False),
+            "version": data.get("version", "1.0.0"),
+            "details": data,
+        }
+    except Exception as exc:
+        return {
+            "online": False,
+            "worker_url": worker_url,
+            "agy_installed": False,
+            "authenticated": False,
+            "error": str(exc),
+            "help": "Run './scripts/setup-worker.sh start' on the host to launch the worker daemon.",
+        }
 
 
 @app.get("/api/fleet")
@@ -714,64 +849,60 @@ async def api_gev_start():
     return {"ok": ok, "message": msg}
 
 
+@app.get("/api/gev/geocode")
+async def api_gev_geocode(q: str = "", bias: str | None = None):
+    """Unified multi-tier geocoding endpoint for God's Eye View HUD and Zenith tools."""
+    from .tools.gods_eye_view import geocode_location
+    query = (q or "").strip()
+    if not query:
+        return JSONResponse({"ok": True, "found": False, "message": "Empty query", "place": None})
+
+    try:
+        lat, lon, name = await geocode_location(query)
+        viewport = {
+            "southwest": {"lat": round(lat - 0.03, 5), "lng": round(lon - 0.03, 5)},
+            "northeast": {"lat": round(lat + 0.03, 5), "lng": round(lon + 0.03, 5)},
+        }
+        short_name = name if name.startswith("Target (") else name.split(",")[0].strip()
+        place = {
+            "lat": lat,
+            "lng": lon,
+            "name": short_name,
+            "label": name,
+            "types": ["locality", "political"],
+            "viewport": viewport,
+        }
+        return JSONResponse({
+            "ok": True,
+            "found": True,
+            "place": place,
+            "lat": lat,
+            "lng": lon,
+            "name": short_name,
+            "label": name,
+        })
+    except Exception as e:
+        log.error("GEV geocode endpoint error for '%s': %s", query, e)
+        return JSONResponse({"ok": False, "found": False, "error": str(e), "place": None}, status_code=500)
+
+
 @app.api_route("/gev", methods=["GET", "HEAD"])
 @app.api_route("/gev/{full_path:path}", methods=["GET", "HEAD", "POST"])
 async def proxy_gev(request: Request, full_path: str = ""):
-    """Reverse proxy God's Eye View through Zenith to ensure seamless iframe embedding."""
+    """Serve or reverse-proxy God's Eye View through Zenith to ensure seamless iframe embedding."""
     from .tools.gods_eye_view import ensure_gev_server_started, is_gev_server_running
 
     port = getattr(settings, "gev_port", 4173)
-    target_url = f"http://127.0.0.1:{port}/gev/{full_path}"
-    if request.url.query:
-        target_url += f"?{request.url.query}"
+    gev_dir = settings.gev_dir
+    dist_dir = gev_dir / "dist"
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            body = await request.body()
-            headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
-            resp = await client.request(
-                method=request.method,
-                url=target_url,
-                headers=headers,
-                content=body,
-            )
-
-            # Strip restrictive framing headers and inject permissive ones
-            excluded = {"content-encoding", "content-length", "transfer-encoding", "connection", "x-frame-options", "content-security-policy"}
-            resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
-            resp_headers["X-Frame-Options"] = "SAMEORIGIN"
-            resp_headers["Content-Security-Policy"] = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* https://*"
-
-            return Response(
-                content=resp.content,
-                status_code=resp.status_code,
-                headers=resp_headers,
-                media_type=resp.headers.get("content-type"),
-            )
-    except Exception as e:
-        # Fallback to static dist bundle if server is starting or offline
-        index_file = settings.gev_dir / "dist" / "index.html"
-        if not full_path and index_file.exists():
-            return FileResponse(index_file, headers={"X-Frame-Options": "SAMEORIGIN"})
-        # Otherwise attempt background start and return informative message
-        asyncio.create_task(ensure_gev_server_started())
-        return JSONResponse(
-            {"error": "God's Eye View service initializing", "detail": str(e)},
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
-
-@app.api_route("/api/{gev_endpoint:path}", methods=["GET", "HEAD", "POST"])
-async def proxy_gev_apis(request: Request, gev_endpoint: str):
-    """Proxy God's Eye View telemetry data feeds if matching a GEV provider endpoint."""
-    first_segment = gev_endpoint.split("/")[0]
-    if first_segment in GEV_API_PROXY_PREFIXES or any(first_segment.startswith(p) for p in GEV_API_PROXY_PREFIXES):
-        port = getattr(settings, "gev_port", 4173)
-        target_url = f"http://127.0.0.1:{port}/api/{gev_endpoint}"
+    # 1. If dev server is actively running on the configured port, proxy directly to it
+    if is_gev_server_running():
+        target_url = f"http://127.0.0.1:{port}/gev/{full_path}"
         if request.url.query:
             target_url += f"?{request.url.query}"
         try:
-            async with httpx.AsyncClient(timeout=25.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 body = await request.body()
                 headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
                 resp = await client.request(
@@ -780,16 +911,124 @@ async def proxy_gev_apis(request: Request, gev_endpoint: str):
                     headers=headers,
                     content=body,
                 )
-                excluded = {"content-encoding", "content-length", "transfer-encoding", "connection"}
+                excluded = {"content-encoding", "content-length", "transfer-encoding", "connection", "x-frame-options", "content-security-policy"}
                 resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+                resp_headers["X-Frame-Options"] = "SAMEORIGIN"
+                resp_headers["Content-Security-Policy"] = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* https://*"
                 return Response(
                     content=resp.content,
                     status_code=resp.status_code,
                     headers=resp_headers,
                     media_type=resp.headers.get("content-type"),
                 )
-        except Exception as e:
-            return JSONResponse({"error": f"GEV data proxy failed: {e}"}, status_code=502)
+        except Exception:
+            pass  # Fall through to direct static dist bundle serving
+
+    # 2. Serve from static pre-built production bundle if available
+    if dist_dir.exists():
+        clean_path = full_path.lstrip("/")
+        if clean_path.startswith("gev/"):
+            clean_path = clean_path[4:]
+
+        headers = {
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* https://*",
+        }
+
+        # Root route or index.html
+        if not clean_path or clean_path == "index.html":
+            index_file = dist_dir / "index.html"
+            if index_file.is_file():
+                return FileResponse(index_file, headers=headers)
+
+        # Direct file check in dist
+        candidate = dist_dir / clean_path
+        if candidate.is_file():
+            return FileResponse(candidate, headers=headers)
+
+        # File check in dist/gev subfolder
+        candidate_gev = dist_dir / "gev" / clean_path
+        if candidate_gev.is_file():
+            return FileResponse(candidate_gev, headers=headers)
+
+        # Public assets check
+        pub_candidate = gev_dir / "public" / clean_path
+        if pub_candidate.is_file():
+            return FileResponse(pub_candidate, headers=headers)
+
+        # SPA fallback for non-asset deep routes
+        index_file = dist_dir / "index.html"
+        if index_file.is_file() and not clean_path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".json", ".wasm", ".gltf", ".glb")):
+            return FileResponse(index_file, headers=headers)
+
+    # 3. Fallback: attempt background server start and return informative message
+    asyncio.create_task(ensure_gev_server_started())
+    return JSONResponse(
+        {"error": "God's Eye View service initializing", "detail": "Pre-built assets not found and local server is starting."},
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
+@app.api_route("/api/{gev_endpoint:path}", methods=["GET", "HEAD", "POST"])
+async def proxy_gev_apis(request: Request, gev_endpoint: str):
+    """Proxy God's Eye View telemetry data feeds if matching a GEV provider endpoint."""
+    from .tools.gods_eye_view import is_gev_server_running
+    first_segment = gev_endpoint.split("/")[0]
+    if first_segment in GEV_API_PROXY_PREFIXES or any(first_segment.startswith(p) for p in GEV_API_PROXY_PREFIXES):
+        port = getattr(settings, "gev_port", 4173)
+
+        # 1. If dev server running, proxy to local Vite server
+        if is_gev_server_running():
+            target_url = f"http://127.0.0.1:{port}/api/{gev_endpoint}"
+            if request.url.query:
+                target_url += f"?{request.url.query}"
+            try:
+                async with httpx.AsyncClient(timeout=25.0) as client:
+                    body = await request.body()
+                    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
+                    resp = await client.request(
+                        method=request.method,
+                        url=target_url,
+                        headers=headers,
+                        content=body,
+                    )
+                    excluded = {"content-encoding", "content-length", "transfer-encoding", "connection"}
+                    resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+                    return Response(
+                        content=resp.content,
+                        status_code=resp.status_code,
+                        headers=resp_headers,
+                        media_type=resp.headers.get("content-type"),
+                    )
+            except Exception:
+                pass  # Fall through to direct proxy below
+
+        # 2. Direct upstream proxy fallback for key public feeds
+        try:
+            upstream_url = None
+            if first_segment == "celestrak":
+                upstream_url = f"https://celestrak.org/NORAD/elements/gp.php?{request.url.query}"
+            elif first_segment == "adsblol":
+                sub = gev_endpoint.removeprefix("adsblol/").lstrip("/")
+                upstream_url = f"https://api.adsb.lol/v2/{sub}"
+                if request.url.query:
+                    upstream_url += f"?{request.url.query}"
+            elif first_segment == "opensky":
+                upstream_url = f"https://opensky-network.org/api/states/all?{request.url.query}"
+
+            if upstream_url:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    u_resp = await client.get(upstream_url, headers={"User-Agent": "ZenithGodsEyeView/1.0"})
+                    return Response(
+                        content=u_resp.content,
+                        status_code=u_resp.status_code,
+                        media_type=u_resp.headers.get("content-type", "application/json"),
+                    )
+        except Exception:
+            pass
+
+        # Return safe empty telemetry payload
+        return JSONResponse({"ok": True, "states": [], "data": []})
 
     return JSONResponse({"error": "Not Found"}, status_code=404)
 
@@ -865,11 +1104,60 @@ async def ws_chat(websocket: WebSocket):
         return text
 
 
+    active_turn_task: asyncio.Task | None = None
+
+    async def run_turn(prompt_text: str, is_v: bool):
+        try:
+            try:
+                await websocket.send_json({"type": "agent_start", "prompt": prompt_text})
+            except Exception:
+                pass
+            final = await _orpheus.handle(prompt_text, emit)
+            try:
+                payload = {"type": "done", "text": final}
+                if is_v:
+                    spoke = await speak_final(final)
+                    # speak_final returns either a string (text fallback) or
+                    # a JSON string carrying base64 audio.
+                    if isinstance(spoke, str) and spoke.startswith('{"'):
+                        try:
+                            spoke = json.loads(spoke)
+                        except Exception:
+                            pass
+                        if isinstance(spoke, dict) and spoke.get("audio"):
+                            payload = {"type": "done", "text": {
+                                "audio": spoke["audio_b64"],
+                                "audio_mime": spoke.get("audio_mime", "audio/webm"),
+                                "model": spoke.get("model", "")}}
+                await websocket.send_json(payload)
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            log.info("Chat generation turn cancelled by user")
+            try:
+                await websocket.send_json({"type": "done", "text": "\n\n*(generation stopped)*"})
+            except Exception:
+                pass
+            raise
+        except Exception as exc:
+            log.exception("orchestrator failed")
+            try:
+                await websocket.send_json({"type": "error", "error": str(exc)})
+            except Exception:
+                pass
+
     try:
         while True:
             data = await websocket.receive_json()
             mtype = data.get("type")
+            if mtype in ("stop", "cancel"):
+                if active_turn_task and not active_turn_task.done():
+                    active_turn_task.cancel()
+                continue
+
             if mtype == "clear":
+                if active_turn_task and not active_turn_task.done():
+                    active_turn_task.cancel()
                 _orpheus.restart()
                 await websocket.send_json({"type": "cleared"})
                 continue
@@ -895,43 +1183,20 @@ async def ws_chat(websocket: WebSocket):
                 u_label = settings.user_name or "Friend"
                 prompt = f"[spoken aloud by {u_label}] {prompt}"
 
-            try:
-                await websocket.send_json({"type": "agent_start", "prompt": prompt})
-            except Exception:
-                pass
-            try:
-                final = await _orpheus.handle(prompt, emit)
-                try:
-                    payload = {"type": "done", "text": final}
-                    if is_voice:
-                        spoke = await speak_final(final)
-                        # speak_final returns either a string (text fallback) or
-                        # a JSON string carrying base64 audio.
-                        if isinstance(spoke, str) and spoke.startswith('{"'):
-                            try:
-                                spoke = json.loads(spoke)
-                            except Exception:
-                                pass
-                            if isinstance(spoke, dict) and spoke.get("audio"):
-                                payload = {"type": "done", "text": {
-                                    "audio": spoke["audio_b64"],
-                                    "audio_mime": spoke.get("audio_mime", "audio/webm"),
-                                    "model": spoke.get("model", "")}}
-                    await websocket.send_json(payload)
-                except Exception:
-                    pass
-            except Exception as exc:
-                log.exception("orchestrator failed")
-                try:
-                    await websocket.send_json({"type": "error", "error": str(exc)})
-                except Exception:
-                    pass
-            await asyncio.sleep(0.05)
+            if active_turn_task and not active_turn_task.done():
+                active_turn_task.cancel()
+
+            active_turn_task = asyncio.create_task(run_turn(prompt, is_voice))
+            _active_chat_turns.add(active_turn_task)
+            active_turn_task.add_done_callback(_active_chat_turns.discard)
+            await asyncio.sleep(0.01)
     except WebSocketDisconnect:
         pass
     except Exception:
         pass
     finally:
+        if active_turn_task and not active_turn_task.done():
+            active_turn_task.cancel()
         hub.unsubscribe(queue)
         _pending_ws.discard(queue)
         sender_task.cancel()

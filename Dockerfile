@@ -45,6 +45,7 @@ COPY zenith ./zenith
 COPY run.py .
 COPY static ./static
 COPY docs ./docs
+COPY gods-eye-view/dist ./gods-eye-view/dist
 
 # Set up runtime data directories with strict non-root ownership
 RUN mkdir -p /app/data /app/static/screenshots /tmp/zenith-files && \

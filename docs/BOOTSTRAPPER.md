@@ -24,10 +24,15 @@ chmod +x zenith-install.sh
 ./zenith-install.sh
 ```
 
-### Windows Execution (PowerShell 5.1 & PowerShell Core 7+)
+### Windows Execution (1-Click / Double-Click & CLI)
 
+* **1-Click Double-Click**: Simply double-click **`zenith.exe`** or **`zenith.bat`** in Windows Explorer.
+* **Command Prompt / Terminal**:
+```cmd
+zenith.exe
+```
+* **PowerShell 5.1 & PowerShell Core 7+**:
 ```powershell
-# In an elevated or standard PowerShell terminal:
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\zenith-install.ps1
 ```
@@ -61,9 +66,14 @@ The installer executes 8 deterministic, idempotent stages with live terminal fee
   ```
 * **Security Guarantee**: Strict filtration ensures that no passwords, API tokens, cryptographic keys, credentials, or session cookies are stored in this profile. Permissions are strictly locked to `0600` (read/write only for the owner).
 
-### Stage 2: Checking Docker Engine
+### Stage 2: Checking Docker Engine & Automatic Ignition
 * Verifies `docker` command availability and verifies daemon connectivity (`docker info`).
-* If Docker is missing, the bootstrapper:
+* **Automatic Engine Ignition**: If the Docker daemon is not running, the bootstrapper automatically starts it without requiring manual user commands:
+  - **Windows**: Locates and starts `Docker Desktop.exe` via `Start-Process`, then polls for daemon readiness.
+  - **Linux**: Starts the Docker systemd daemon (`systemctl start docker` or `service docker start`).
+  - **macOS**: Launches Docker Desktop (`open -a Docker`).
+* **Zero-Failure Native Fallback**: If Docker is not installed, cannot be started, or the user declines container installation, Zenith **automatically activates Zenith Native Host Mode** (`python run.py`), providing guaranteed 100% startup without downtime or failure.
+* If Docker is missing and user approves, the bootstrapper:
   1. Explains what packages are required.
   2. Solicits user consent before requesting elevated privileges (`sudo`).
   3. Uses verified official package repositories for the target platform:
@@ -95,10 +105,12 @@ The installer executes 8 deterministic, idempotent stages with live terminal fee
 * Detects existing `zenith:latest` production image. Reuses cached images during normal runs to ensure fast sub-second startup.
 * When run with `--repair` or `--update`, triggers a pristine clean build (`docker compose build --no-cache`).
 
-### Stage 6: Starting Services
-* Inspects existing container state (`docker compose ps`).
-* If already running and healthy, avoids unnecessary restarts.
-* Otherwise launches the stack in detached mode:
+### Stage 6: Starting Services & Antigravity Coding Worker
+* Automatically verifies or downloads the **Google Antigravity CLI** (`agy` or `agy.exe`) via official Google installers.
+* Sets up a dedicated Python environment for the worker (`worker/.venv`) with `fastapi` and `uvicorn`.
+* Spawns the **Antigravity Coding Worker** daemon (`zenith-worker` on host port 8022), enabling Zenith to delegate multi-file engineering and coding tasks.
+* Connects the container stack to the host worker via universal `host.docker.internal:host-gateway` networking.
+* Inspects existing container state (`docker compose ps`) and launches the stack:
   ```bash
   docker compose up -d
   ```
@@ -106,9 +118,13 @@ The installer executes 8 deterministic, idempotent stages with live terminal fee
 ### Stage 7: Waiting for Health Checks
 * Actively polls `http://localhost:8005/api/health` with a 45-second timeout and live progress indicators.
 * Verifies HTTP 200 status and JSON payload (`"status": "ok"`).
+* Verifies Antigravity Worker readiness and displays an onboarding tip if first-time Google sign-in is needed (`agy`).
 * If health check fails or times out, immediately dumps the tail of container diagnostic logs with actionable troubleshooting advice.
 
-### Stage 8: Opening Zenith
+### Stage 8: Opening Zenith & Desktop Shortcut
+* Creates desktop shortcuts automatically:
+  - **Windows**: Creates `Zenith.lnk` on the user's Desktop pointing directly to `zenith.exe`.
+  - **Linux**: Creates `Zenith.desktop` on `$HOME/Desktop` and in `$HOME/.local/share/applications` with app icon and metadata.
 * Dispatches platform-specific browser invocation:
   - **Linux**: `xdg-open http://localhost:8005`
   - **macOS**: `open http://localhost:8005`

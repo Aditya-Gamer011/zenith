@@ -94,6 +94,16 @@ class Orchestrator:
         except Exception:
             unified_ctx = ""
 
+        from ..agents.agent_service import DEPARTMENTS
+        dept_lines = [f"- `{k}`: {v['description']}" for k, v in sorted(DEPARTMENTS.items())]
+        try:
+            custom_agents = store.list_custom_agents()
+            if custom_agents:
+                dept_lines.extend([f"- `{c['id']}` (Custom): {c.get('role_description', '')}" for c in custom_agents])
+        except Exception:
+            pass
+        org_roster = "\n".join(dept_lines)
+
         return base_prompt + f"""
 
 --- CURRENT CONTEXT ---
@@ -108,7 +118,23 @@ Host & Server Environment:
 What I know about {user_name} (from memory):
 {mem}{unified_ctx}
 
-Tools: {tool_names()}""".strip("\n")
+--- MULTI-AGENT ORGANIZATION & DELEGATION ---
+You are the Chief Executive Orchestrator of Zenith, leading an organization of specialized departmental agents.
+When {user_name} asks for domain-specific actions, delegate the mission to the appropriate departmental specialist using `delegate_task(department, task, context)`:
+{org_roster}
+
+You hold executive tools:
+- `delegate_task`: Delegate domain missions to your specialists (communication, coding, hr, research, operations, productivity, creative, utility, or custom agents).
+- `list_agents`: View the complete organization roster and tool counts.
+- `get_agent_status`: Poll or inspect ongoing/completed agent missions.
+- `update_user_profile`: Update {user_name}'s name or profile immediately.
+- `memory` / `graph`: Maintain strategic long-term memory and knowledge graph relations.
+- `switch_mode` / `get_mode`: Switch system operating modes.
+- `get_setup_status` / `setup_secret`: Configure API keys and secrets.
+- `zenith_docs`: Built-in documentation reference.
+
+Always communicate warmly, concisely, and supportively with {user_name}. Synthesize reports from your specialists into clear, conversational summaries.""".strip("\n")
+
 
     async def handle(self, user_text: str, emit: Callable) -> str:
         """Process one user message and emit events to `emit` (awaitable callable).
@@ -169,8 +195,9 @@ Tools: {tool_names()}""".strip("\n")
         if messages[-1].get("role") == "user":
             messages[-1]["content"] = cleaned_user
 
-        tool_specs = tool_reg.catalog()
+        tool_specs = tool_reg.executive_catalog()
         final_text = ""
+        executed_tool_names: set[str] = set()
 
         tier = "deep" if ultrathink else "standard"
         for _round in range(1, max_rounds + 1):
@@ -182,9 +209,16 @@ Tools: {tool_names()}""".strip("\n")
                 primary = provider.chat_stream
             result = await self._run_round(primary, messages, tool_specs, emit, tier=tier, max_tokens=max_tokens)
             # Error resilience matrix:
+            #   antigravity      -> Worker offline/error → fallback to direct Gemini stream
             #   quota            -> Gemini keypool exhausted → retry on DeepSeek (when not already there)
             #   unavailable      -> models 404/5xx → retry on fallback as well
             #   fallback_failed  -> DeepSeek relay died while FALLBACK_PREFER=yes → retry Gemini once
+            if result["error"] and primary == provider.chat_stream_antigravity:
+                log.warning("Antigravity worker stream failed (%s); falling back to direct provider stream", result["error"])
+                if emit:
+                    await emit({"type": "provider_fallback", "message": "Worker unavailable — switching to direct model stream."})
+                result = await self._run_round(provider.chat_stream, messages, tool_specs, emit, tier=tier, max_tokens=max_tokens)
+
             if result["error"] in ("quota", "unavailable") and not provider.FALLBACK_PREFER and provider.FALLBACK_API_KEY:
                 if emit:
                     await emit({"type": "provider_fallback", "message": "Model quota hit — using fallback."})
@@ -207,6 +241,8 @@ Tools: {tool_names()}""".strip("\n")
                 if markup_calls:
                     calls = [{"name": n, "args": a, "extra": {}, "id": ""}
                              for n, a in markup_calls]
+            if calls:
+                executed_tool_names.update(c["name"] for c in calls)
             if result["error"]:
                 if emit:
                     await emit({"type": "error", "error": result["error"]})
@@ -238,7 +274,7 @@ Tools: {tool_names()}""".strip("\n")
                 timeout_cap = 305.0 if c["name"] == "shell" else 45.0
                 try:
                     res = await asyncio.wait_for(
-                        tool_reg.call_tool(c["name"], _parse_args(c["args"])),
+                        tool_reg.call_tool(c["name"], _parse_args(c["args"]), emit=emit),
                         timeout=timeout_cap,
                     )
                 except asyncio.TimeoutError:
@@ -276,6 +312,38 @@ Tools: {tool_names()}""".strip("\n")
                 res_texts = [b.get("content", "") for b in batched if b.get("content")]
                 if res_texts:
                     final_text = "\n".join(res_texts).strip()
+
+        # Active Profile Intent Guard:
+        # If user asked to fix/change their name or dashboard profile, or if assistant promised
+        # "let me update your profile", ensure update_user_profile is actually executed!
+        if "update_user_profile" not in executed_tool_names:
+            name_m = re.search(r"(?:call me|my name is|change my name to|update my name to)\s+([A-Za-z]+)", user_text, re.IGNORECASE)
+            dashboard_fix = bool(re.search(r"dashboard\s+(?:still\s+)?says|fix\s+(?:the\s+)?(?:name|dashboard)", user_text, re.IGNORECASE))
+            promised_update = bool(re.search(r"let me update your (?:user )?profile|updating your (?:user )?profile|update your profile right away", final_text, re.IGNORECASE))
+
+            target_name = ""
+            if name_m:
+                target_name = name_m.group(1).strip().capitalize()
+            elif dashboard_fix or promised_update:
+                mem_name = store.get_memory("user", "name")
+                if mem_name and mem_name.lower() not in ("maya", "friend", ""):
+                    target_name = mem_name.strip()
+                elif "aditya" in user_text.lower() or "aditya" in final_text.lower():
+                    target_name = "Aditya"
+
+            if target_name and target_name.lower() != settings.user_name.lower():
+                try:
+                    if emit:
+                        await emit({"type": "tool_start", "name": "update_user_profile", "args": {"name": target_name}})
+                    res = await tool_reg.call_tool("update_user_profile", {"name": target_name})
+                    ok = bool(res.get("ok", True)) if isinstance(res, dict) else True
+                    content = res.get("result", f"Profile updated: {target_name}") if isinstance(res, dict) else str(res)
+                    if emit:
+                        await emit({"type": "tool_result", "name": "update_user_profile", "ok": ok, "content": content})
+                    if promised_update or dashboard_fix:
+                        final_text += f"\n\n✓ Profile and dashboard updated — your name is now set to **{target_name}**."
+                except Exception as exc:
+                    log.warning("Active Profile Intent Guard failed to update profile: %s", exc)
 
         if not final_text:
             final_text = "Done."

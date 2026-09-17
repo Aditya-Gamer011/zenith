@@ -192,6 +192,16 @@ class UnifiedBrowserService:
 
         log.info("Starting autonomous browser goal: '%s' starting at %s", goal, curr_url)
 
+        # Safety check: if target or goal implies sensitive action, halt for confirmation immediately
+        if self.is_sensitive_action(curr_url, text=goal):
+            steps_log.append({"step": 1, "status": "safety_halt", "reason": "Sensitive action detected in goal/target."})
+            return {
+                "status": "requires_confirmation",
+                "goal": goal,
+                "final_url": curr_url,
+                "steps": steps_log,
+            }
+
         # Initial navigation
         nav_res = await self.navigate(curr_url, max_chars=3500)
         steps_log.append({"step": 1, "action": "navigate", "url": curr_url, "result": nav_res.get("status")})
@@ -201,11 +211,21 @@ class UnifiedBrowserService:
 
         # Multi-step loop
         for step in range(2, max_steps + 1):
+            # Safety check: if step involves checkout/sensitive action, stop and require confirmation
+            if self.is_sensitive_action(self._current_url or curr_url):
+                steps_log.append({"step": step, "status": "safety_halt", "reason": "Sensitive action detected."})
+                return {
+                    "status": "requires_confirmation",
+                    "goal": goal,
+                    "final_url": self._current_url or curr_url,
+                    "steps": steps_log,
+                }
+
             page_text = nav_res.get("text", "")
             # If the goal asks for specific info and it's visible on the page
-            goal_terms = goal.lower().split()
+            goal_terms = [t for t in goal.lower().split() if len(t) > 2]
             found_terms = [t for t in goal_terms if t in page_text.lower()]
-            if len(found_terms) >= max(1, len(goal_terms) // 2):
+            if goal_terms and len(found_terms) >= max(1, len(goal_terms) // 2):
                 steps_log.append({"step": step, "status": "goal_achieved", "summary": page_text[:800]})
                 return {
                     "status": "success",
@@ -213,16 +233,6 @@ class UnifiedBrowserService:
                     "final_url": self._current_url,
                     "title": self._current_title,
                     "extracted_summary": page_text[:1200],
-                    "steps": steps_log,
-                }
-
-            # Safety check: if step involves checkout/sensitive action, stop and require confirmation
-            if self.is_sensitive_action(curr_url):
-                steps_log.append({"step": step, "status": "safety_halt", "reason": "Sensitive action detected."})
-                return {
-                    "status": "requires_confirmation",
-                    "goal": goal,
-                    "final_url": curr_url,
                     "steps": steps_log,
                 }
 

@@ -373,33 +373,6 @@
       <div class="hdr-id">
         <span class="hdr-name">zenith</span>
       </div>
-      <!-- Sensory & Privacy indicator chips -->
-      <div class="hdr-sensor-strip" id="hdr-sensor-strip">
-        <button type="button" class="sensor-chip" id="chip-ghost" title="Ghost Mode (Master Privacy Switch)">
-          <span class="chip-dot ghost"></span>
-          <span class="chip-label">Ghost</span>
-        </button>
-        <button type="button" class="sensor-chip active" id="chip-mic" title="Microphone / Voice Active">
-          <span class="chip-dot"></span>
-          <span class="chip-label">Mic</span>
-        </button>
-        <button type="button" class="sensor-chip" id="chip-camera" title="Camera / Computer Vision">
-          <span class="chip-dot"></span>
-          <span class="chip-label">Camera</span>
-        </button>
-        <button type="button" class="sensor-chip active" id="chip-screen" title="Clippy Vision Screen Awareness Active">
-          <span class="chip-dot"></span>
-          <span class="chip-label">Screen</span>
-        </button>
-        <button type="button" class="sensor-chip active" id="chip-browser" title="Unified Browser Automation Active">
-          <span class="chip-dot"></span>
-          <span class="chip-label">Browser</span>
-        </button>
-        <button type="button" class="sensor-chip active" id="chip-memory" title="Mem0 Long-Term Memory Active">
-          <span class="chip-dot"></span>
-          <span class="chip-label">Mem0</span>
-        </button>
-      </div>
     </div>
 
     <div class="hdr-right">
@@ -423,6 +396,9 @@
         </button>
         <button class="hdr-btn" id="context-btn" title="Operating Layer · Screen, Activity &amp; Context" aria-label="Context &amp; Activity">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5l3 7 4-14 3 7h5"/></svg>
+        </button>
+        <button class="hdr-btn" id="agents-btn" title="Organization &amp; Multi-Agent Roster" aria-label="Agents Roster">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </button>
         <button class="hdr-btn" id="term-btn" title="Execution log" aria-label="Logs">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
@@ -504,7 +480,7 @@
       <section class="chat" id="chat">
         <div class="msgs" id="msgs">
           <div class="welcome" id="welcome">
-            <div class="wlcm-title" id="wlcm-title"><span class="wlcm-greet" id="wlcm-greet">Good evening</span><span class="wlcm-soft" id="wlcm-name">, Milind</span></div>
+            <div class="wlcm-title" id="wlcm-title"><span class="wlcm-greet" id="wlcm-greet">Good evening</span><span class="wlcm-soft" id="wlcm-name"></span></div>
             <p class="wlcm-subtitle" id="wlcm-subtitle">How can I help you today?</p>
           </div>
         </div>
@@ -722,6 +698,39 @@
   </div>
 </div>
 
+<!-- Antigravity Google OAuth Modal -->
+<div class="cmd-palette-backdrop" id="agy-auth-modal" style="display:none" aria-modal="true" role="dialog">
+  <div class="cmd-palette-box intg-modal-box agy-modal-box" style="max-width: 480px;">
+    <div class="intg-modal-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/><polygon points="12 6 15 12 9 12 12 6" fill="currentColor"/></svg>
+        <h3 class="intg-modal-title" id="agy-modal-title">Connect Google Antigravity</h3>
+      </div>
+      <button class="intg-modal-close" onclick="document.getElementById('agy-auth-modal').style.display='none'">✕</button>
+    </div>
+    <div class="intg-modal-body" style="text-align:center; padding: 24px 16px;">
+      <div class="setup-spinner" id="agy-modal-pulse" style="margin: 0 auto 16px auto; width: 44px; height: 44px;"></div>
+      <h4 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600;" id="agy-modal-status-title">Google OAuth Prompt Initiated</h4>
+      <p class="intg-modal-desc" id="agy-modal-status-text" style="margin-bottom: 20px; font-size: 13px; color: var(--text-dim, #94a3b8); line-height: 1.5;">
+        A Google account sign-in prompt has been launched on your host machine. Please complete the authorization in your browser.
+      </p>
+      <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 14px; text-align: left; font-size: 12px; font-family: monospace;">
+        <div style="color: #64748b; margin-bottom: 6px; font-family: sans-serif; font-size: 11px;">Or run this one-time command in your terminal:</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <code style="color: #38bdf8; word-break: break-all;">python -m worker.manage login</code>
+          <button type="button" class="intg-btn intg-btn-secondary" style="padding: 3px 8px; font-size: 11px; white-space: nowrap;" onclick="navigator.clipboard.writeText('python -m worker.manage login'); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000);">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div class="intg-modal-footer">
+      <div style="font-size: 11px; color: #64748b;" id="agy-modal-footer-hint">Listening for authorization token...</div>
+      <div class="intg-modal-actions">
+        <button class="intg-btn intg-btn-secondary" onclick="document.getElementById('agy-auth-modal').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Camera Live Preview & Visual Q&A Modal -->
 <div class="cam-modal" id="camera-modal" style="display:none" aria-label="Camera Live Vision">
   <div class="cam-dialog">
@@ -791,8 +800,8 @@
 
   <div class="ctx-tabs">
     <button type="button" class="ctx-tab active" data-tab="ctx-overview">Overview</button>
+    <button type="button" class="ctx-tab" data-tab="ctx-agents">Organization &amp; Agents</button>
     <button type="button" class="ctx-tab" data-tab="ctx-activity">ActivityWatch</button>
-    <button type="button" class="ctx-tab" data-tab="ctx-memory">Mem0 Memory</button>
     <button type="button" class="ctx-tab" data-tab="ctx-privacy">Privacy Guard</button>
   </div>
 
@@ -816,6 +825,98 @@
       </div>
     </div>
 
+    <!-- Organization & Multi-Agent Tab -->
+    <div class="ctx-pane" id="pane-ctx-agents" style="display:none">
+      <div class="ctx-card">
+        <div class="ctx-card-hdr">
+          <div>
+            <div class="ctx-card-title">Multi-Agent Organization Roster</div>
+            <div class="ctx-card-sub" style="font-size: 0.72rem; color: var(--ink-dim); margin-top: 2px;">Executive Orchestrator &amp; Specialized Autonomous Departments</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="ctx-mini-btn" id="ctx-agent-forge-toggle-btn">+ Hire Specialist</button>
+            <button type="button" class="ctx-mini-btn" id="ctx-roster-refresh-btn">↻ Refresh</button>
+          </div>
+        </div>
+
+        <div class="ctx-stats-row" id="ctx-agents-stats-row">
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-depts">8</span><span class="stat-lbl">Departments</span></div>
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-custom">0</span><span class="stat-lbl">Custom Hires</span></div>
+          <div class="ctx-stat"><span class="stat-num" id="ctx-stat-tools">188</span><span class="stat-lbl">Capabilities</span></div>
+        </div>
+      </div>
+
+      <!-- Agent Forge: Dynamic Hiring Form (Collapsible) -->
+      <div class="ctx-card" id="ctx-agent-forge-card" style="display: none;">
+        <div class="ctx-card-hdr">
+          <div class="ctx-card-title">Agent Forge — Hire Specialized Autonomous Agent</div>
+          <button type="button" class="term-close" id="ctx-agent-forge-close-btn" style="font-size: 1rem;">✕</button>
+        </div>
+        <div class="agent-forge-form" id="agent-forge-form">
+          <div class="forge-grid">
+            <div class="forge-field">
+              <label for="forge-agent-id">Agent Identifier *</label>
+              <input type="text" id="forge-agent-id" class="forge-input" placeholder="e.g. security_auditor, rover_cad" />
+            </div>
+            <div class="forge-field">
+              <label for="forge-agent-name">Display Name *</label>
+              <input type="text" id="forge-agent-name" class="forge-input" placeholder="e.g. Security & Vulnerability Auditor" />
+            </div>
+            <div class="forge-field">
+              <label for="forge-agent-dept">Department *</label>
+              <input type="text" id="forge-agent-dept" class="forge-input" placeholder="e.g. Cybersecurity, Robotics Lab" />
+            </div>
+            <div class="forge-field">
+              <label for="forge-agent-desc">Role Description *</label>
+              <input type="text" id="forge-agent-desc" class="forge-input" placeholder="e.g. Audits git commits and codebase for security flaws" />
+            </div>
+          </div>
+          <div class="forge-field" style="margin-top: 8px;">
+            <label for="forge-agent-prompt">System Prompt &amp; Behavioral Guidelines *</label>
+            <textarea id="forge-agent-prompt" class="forge-textarea" rows="3" placeholder="You are Zenith's Security Auditor. Inspect files, check dependencies, and report risks..."></textarea>
+          </div>
+          <div class="forge-field" style="margin-top: 8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label>Allocate Capabilities / Tools (<span id="forge-selected-count">0</span> selected)</label>
+              <input type="text" id="forge-tools-filter" class="forge-input-sm" placeholder="Filter tools..." style="width: 140px; padding: 2px 6px; font-size: 0.7rem;" />
+            </div>
+            <div class="forge-tools-picker" id="forge-tools-picker">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+            <button type="button" class="ctx-mini-btn" id="forge-cancel-btn">Cancel</button>
+            <button type="button" class="ctx-mini-btn primary" id="forge-submit-btn" style="background: var(--brand); color: #fff;">Hire &amp; Persist Agent</button>
+          </div>
+          <div id="forge-status-msg" style="margin-top: 6px; font-size: 0.75rem; display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Core Departments Grid -->
+      <div class="ctx-card">
+        <div class="ctx-card-title" style="margin-bottom: 8px;">Core Departmental Units</div>
+        <div class="dept-roster-grid" id="ctx-depts-list">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- Dynamic Custom Hires -->
+      <div class="ctx-card" id="ctx-custom-agents-card">
+        <div class="ctx-card-title" style="margin-bottom: 8px;">Custom Specialized Agents (Persisted)</div>
+        <div class="custom-agents-list" id="ctx-custom-list">
+          <div class="placeholder" style="font-size: 0.76rem; color: var(--ink-dim); padding: 8px 0;">No custom agents hired yet. Click "+ Hire Specialist" or ask Zenith / HR to hire one.</div>
+        </div>
+      </div>
+
+      <!-- Recent Agent Missions -->
+      <div class="ctx-card">
+        <div class="ctx-card-title" style="margin-bottom: 8px;">Recent Agent Missions &amp; Delegations</div>
+        <div class="agent-runs-list" id="ctx-runs-list">
+          <div class="placeholder" style="font-size: 0.76rem; color: var(--ink-dim); padding: 8px 0;">No recent agent missions.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ActivityWatch Tab -->
     <div class="ctx-pane" id="pane-ctx-activity" style="display:none">
       <div class="ctx-card">
@@ -830,37 +931,6 @@
         </div>
         <div class="ctx-timeline-list" id="ctx-timeline-list">
           <div class="placeholder">Loading ActivityWatch timeline...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Mem0 Tab -->
-    <div class="ctx-pane" id="pane-ctx-memory" style="display:none">
-      <div class="ctx-card">
-        <div class="ctx-card-hdr">
-          <div class="ctx-card-title">Mem0 Durable Memories</div>
-          <div class="ctx-mem-filter">
-            <select id="ctx-mem-tier-sel" class="ctx-select">
-              <option value="">All Tiers</option>
-              <option value="preference">Preferences</option>
-              <option value="project">Projects</option>
-              <option value="workflow">Workflows</option>
-              <option value="decision">Decisions</option>
-            </select>
-          </div>
-        </div>
-        <div class="ctx-mem-add-form">
-          <input type="text" id="ctx-mem-add-input" class="ctx-input" placeholder="Add durable knowledge..." />
-          <select id="ctx-mem-add-tier" class="ctx-select">
-            <option value="preference">Preference</option>
-            <option value="project" selected>Project</option>
-            <option value="workflow">Workflow</option>
-            <option value="decision">Decision</option>
-          </select>
-          <button type="button" class="ctx-primary-btn" id="ctx-mem-add-btn">Remember</button>
-        </div>
-        <div class="ctx-memory-list" id="ctx-memory-list">
-          <div class="placeholder">Loading Mem0 memories...</div>
         </div>
       </div>
     </div>
@@ -886,13 +956,7 @@
             <div><strong>Browser Automation</strong><p class="priv-sub">Allow Playwright and autonomous Browser Use navigation.</p></div>
             <input type="checkbox" id="priv-chk-browser" checked />
           </div>
-          <div class="ctx-priv-item">
-            <div><strong>Mem0 Memory Extraction</strong><p class="priv-sub">Allow saving long-term preferences and project knowledge.</p></div>
-            <input type="checkbox" id="priv-chk-memory" checked />
-          </div>
         </div>
-        <div class="ctx-card-subhead">Protected Applications Blocklist</div>
-        <div class="ctx-blocklist-tags" id="ctx-blocklist-apps"></div>
       </div>
     </div>
   </div>
@@ -902,6 +966,6 @@
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/liquid-glass-shader.js?v=73"></script>
-<script src="/static/app.js?v=71"></script>
+<script src="/static/app.js?v=73"></script>
 </body>
 </html>

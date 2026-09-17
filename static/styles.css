@@ -246,6 +246,7 @@ body::before {
 .hdr-btn:hover { background: var(--panel-2); color: var(--ink); box-shadow: none; }
 .hdr-btn svg { width: 17px; height: 17px; }
 .hdr-btn.active { background: var(--panel-2); color: var(--ink); }
+.hdr-btn#context-btn.active { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 
 /* ── layout ── */
 .layout { flex: 1; display: flex; overflow: hidden; position: relative; z-index: 1; }
@@ -616,6 +617,22 @@ body::before {
 .send:active { transform: none; }
 .send svg { width: 16px; height: 16px; stroke: #000000; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
+.send.stop {
+  background: #ffffff;
+  color: #000000;
+}
+.send.stop:hover {
+  background: #f0f0f0;
+}
+.send.stop svg {
+  stroke: none !important;
+  fill: #000000 !important;
+}
+.send.stop svg rect {
+  fill: #000000 !important;
+  stroke: none !important;
+}
+
 [data-theme="light"] .send {
   background: #000000;
   color: #ffffff;
@@ -625,6 +642,21 @@ body::before {
 }
 [data-theme="light"] .send svg {
   stroke: #ffffff;
+}
+[data-theme="light"] .send.stop {
+  background: #000000;
+  color: #ffffff;
+}
+[data-theme="light"] .send.stop:hover {
+  background: #262626;
+}
+[data-theme="light"] .send.stop svg {
+  stroke: none !important;
+  fill: #ffffff !important;
+}
+[data-theme="light"] .send.stop svg rect {
+  fill: #ffffff !important;
+  stroke: none !important;
 }
 
 /* attachment tray */
@@ -4345,67 +4377,6 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
   gap: 8px;
 }
 
-/* ── Sensory Strip & Indicator Chips ── */
-.hdr-sensor-strip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 14px;
-}
-.sensor-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: var(--ink-dim);
-  font-size: 0.68rem;
-  font-family: var(--mono);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-.sensor-chip:hover {
-  border-color: var(--line-strong);
-  color: var(--ink);
-}
-.sensor-chip .chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-dim);
-  transition: all 0.2s ease;
-}
-.sensor-chip.active {
-  background: rgba(16, 163, 127, 0.12);
-  border-color: rgba(16, 163, 127, 0.35);
-  color: var(--ink);
-}
-.sensor-chip.active .chip-dot {
-  background: #10a37f;
-  box-shadow: 0 0 6px rgba(16, 163, 127, 0.6);
-}
-.sensor-chip#chip-camera.active {
-  background: rgba(0, 240, 255, 0.12);
-  border-color: rgba(0, 240, 255, 0.35);
-}
-.sensor-chip#chip-camera.active .chip-dot {
-  background: #00f0ff;
-  box-shadow: 0 0 6px #00f0ff;
-}
-.sensor-chip#chip-ghost.active {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
-}
-.sensor-chip#chip-ghost.active .chip-dot {
-  background: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
-}
-
 /* ── Camera Live Preview & Visual Q&A Modal ── */
 .cam-modal {
   position: fixed;
@@ -4644,7 +4615,7 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
   height: 380px;
   background: var(--bg-deep, #0b0f19);
   border-top: 1px solid var(--line-2, rgba(255, 255, 255, 0.12));
-  z-index: 998;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
@@ -4900,4 +4871,365 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
   font-size: 0.7rem;
   padding: 2px 8px;
   border-radius: 4px;
+}
+
+/* ── Live Sensory Layer Status Grid in Overview ── */
+.ctx-sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.ctx-sensor-cell {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ctx-sensor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ctx-sensor-name {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ctx-sensor-status {
+  font-size: 0.67rem;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+}
+.ctx-sensor-status.active {
+  color: #10a37f;
+}
+.ctx-sensor-status.paused {
+  color: #ef4444;
+}
+.ctx-sensor-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.ctx-sensor-indicator.active {
+  background: #10a37f;
+  box-shadow: 0 0 6px rgba(16, 163, 127, 0.6);
+}
+.ctx-sensor-indicator.paused {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+/* ─── Multi-Agent Delegation Cards in Chat ──────────────────────────────── */
+.delegation-card {
+  margin: 10px 0;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  font-size: 0.8rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.delegation-card.running {
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.1);
+}
+.delegation-card.done {
+  border-color: rgba(16, 163, 127, 0.35);
+}
+.delegation-card.fail {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.delegation-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  user-select: none;
+}
+.delegation-agent-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.delegation-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.delegation-title {
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.delegation-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.delegation-status {
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  padding: 2px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.delegation-status.running {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+.delegation-status.running::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #818cf8;
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+.delegation-status.done {
+  background: rgba(16, 163, 127, 0.15);
+  color: #10a37f;
+}
+.delegation-status.fail {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+.delegation-body {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.delegation-task {
+  font-size: 0.77rem;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+.delegation-task strong {
+  color: var(--ink);
+}
+.delegation-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--inset);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.delegation-step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.delegation-step-row:last-child {
+  border-bottom: none;
+}
+.delegation-step-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.delegation-step-name {
+  color: #818cf8;
+  font-weight: 600;
+}
+.delegation-step-args {
+  color: var(--ink-dim);
+  font-size: 0.65rem;
+}
+.delegation-result-snippet {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--inset);
+  border-left: 3px solid #10a37f;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--ink);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* ─── Multi-Agent Organization Drawer & Forge Styles ─────────────────────── */
+.dept-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.dept-card {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s;
+}
+.dept-card:hover {
+  border-color: var(--line-strong);
+}
+.dept-card-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dept-card-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dept-card-badge {
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-dim);
+}
+.dept-card-desc {
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+  line-height: 1.35;
+}
+.dept-tools-toggle {
+  font-size: 0.68rem;
+  color: var(--brand);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+  text-align: left;
+}
+.dept-tools-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.tool-pill {
+  font-size: 0.64rem;
+  font-family: var(--mono);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.custom-agent-item {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.custom-agent-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.custom-agent-actions {
+  display: flex;
+  gap: 6px;
+}
+.forge-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.forge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.forge-field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.forge-input, .forge-textarea {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-family: inherit;
+}
+.forge-input:focus, .forge-textarea:focus {
+  border-color: var(--brand);
+  outline: none;
+}
+.forge-tools-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+  background: var(--inset);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+.forge-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.67rem;
+  font-family: var(--mono);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.forge-tool-chip.selected {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.6);
+  color: #818cf8;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
 }

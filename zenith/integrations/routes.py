@@ -32,14 +32,93 @@ def _db() -> IntegrationDB:
 @router.get("/status")
 async def integration_status():
     """Get the connection status of all integrations."""
+    from ..core.tools import _worker_get
     db = _db()
+
+    worker_online = False
+    agy_auth = False
+    worker_data = {}
+    try:
+        w_status = await _worker_get("/status", timeout=0.8)
+        if w_status and w_status.get("status") == "ok":
+            worker_online = True
+            worker_data = w_status
+            agy_auth = bool(w_status.get("agy", {}).get("authenticated", False))
+    except Exception:
+        pass
+
     return {
         "integrations": db.list_connections(),
         "figma_configured": bool(settings.figma_client_id),
         "canva_configured": bool(settings.canva_client_id),
         "github_configured": bool(settings.github_user or getattr(settings, "github_token", "")),
         "cloudflare_configured": bool(getattr(settings, "cloudflare_api_token", "")),
+        "antigravity_configured": agy_auth,
+        "antigravity_worker": {
+            "online": worker_online,
+            "authenticated": agy_auth,
+            "details": worker_data,
+        },
     }
+
+
+# ── Antigravity CLI OAuth ───────────────────────────────────────────────────
+
+@router.get("/antigravity/authorize")
+@router.post("/antigravity/authorize")
+async def antigravity_authorize():
+    """Trigger Google OAuth login via the host Antigravity worker daemon."""
+    from ..core.tools import _worker_post, _worker_get
+
+    # First inspect current status
+    status_resp = await _worker_get("/status", timeout=1.0)
+    if status_resp and status_resp.get("agy", {}).get("authenticated"):
+        return JSONResponse({
+            "ok": True,
+            "already_authenticated": True,
+            "provider": "antigravity",
+            "message": "Google Antigravity is already authenticated and operational.",
+            "agy": status_resp.get("agy"),
+        })
+
+    # Trigger login via worker
+    login_resp = await _worker_post("/auth/login", payload={}, timeout=3.0)
+    if login_resp and login_resp.get("ok"):
+        return JSONResponse({
+            "ok": True,
+            "provider": "antigravity",
+            "name": "Google Antigravity Worker",
+            "status": login_resp.get("status", "initiated"),
+            "message": login_resp.get("message", "Google OAuth sign-in initiated on your host machine."),
+            "cli_command": login_resp.get("cli_command", "python -m worker.manage login"),
+            "poll_interval_ms": 1500,
+        })
+
+    # If worker did not respond or failed
+    return JSONResponse({
+        "ok": False,
+        "provider": "antigravity",
+        "error": "Antigravity worker daemon is offline or unreachable on port 8022.",
+        "instructions": "Ensure the worker is running by executing: python -m worker.manage start",
+        "cli_command": "python -m worker.manage login",
+    }, status_code=503)
+
+
+@router.post("/antigravity/disconnect")
+async def antigravity_disconnect():
+    """Disconnect/logout Antigravity OAuth session."""
+    from ..core.tools import _worker_post
+    logout_resp = await _worker_post("/auth/logout", payload={}, timeout=2.0)
+    if logout_resp and logout_resp.get("ok"):
+        return JSONResponse({
+            "ok": True,
+            "provider": "antigravity",
+            "message": "Antigravity credentials cleared.",
+        })
+    return JSONResponse({
+        "ok": False,
+        "error": "Failed to clear Antigravity credentials on worker.",
+    }, status_code=500)
 
 
 

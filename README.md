@@ -67,12 +67,16 @@ Zenith includes an automated, idempotent bootstrapper that inspects your host, c
 **Linux & macOS:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Aditya-Gamer011/zenith/main/zenith-install.sh | bash
+# Or clone and run:
+./start.sh   # (or ./zenith-install.sh)
 ```
-*(Or clone the repository and run `./zenith-install.sh`)*
 
-**Windows (PowerShell 5.1 / 7+):**
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+**Windows (1-Click / Double-Click):**
+* Simply double-click **`zenith.exe`** or **`zenith.bat`** in Windows Explorer!
+* Or run in Command Prompt / PowerShell:
+```cmd
+zenith.exe
+:: Or via PowerShell:
 .\zenith-install.ps1
 ```
 

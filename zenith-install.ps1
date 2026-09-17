@@ -47,6 +47,7 @@ param(
     [switch]$Restart,
     [switch]$Logs,
     [switch]$Status,
+    [Alias("y", "non-interactive")]
     [switch]$Yes
 )
 
@@ -96,6 +97,20 @@ function Show-Banner {
     Write-Host "  Autonomous AI Operating Layer • Windows Bootstrapper v$ZenithVersion`n" -ForegroundColor Gray
 }
 
+function Get-TargetPort {
+    if ($env:ZENITH_PORT -and ($env:ZENITH_PORT -match '^\d+$')) {
+        return [int]$env:ZENITH_PORT
+    }
+    if (Test-Path ".env") {
+        foreach ($line in (Get-Content ".env" -ErrorAction SilentlyContinue)) {
+            if ($line -match '^\s*ZENITH_PORT\s*=\s*(\d+)') {
+                return [int]$Matches[1]
+            }
+        }
+    }
+    return $DefaultPort
+}
+
 # Resolve Workspace Location
 function Resolve-Workspace {
     if ((Test-Path "run.py") -and (Test-Path "zenith") -and (Test-Path "Dockerfile")) {
@@ -113,12 +128,151 @@ function Resolve-Workspace {
     else {
         $dest = Join-Path $HOME ".zenith\app"
         New-Item -ItemType Directory -Force -Path (Join-Path $HOME ".zenith") | Out-Null
-        if (-not (Test-Path $dest)) {
+        if (-not (Test-Path (Join-Path $dest "run.py"))) {
+            if (Test-Path $dest) {
+                Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
+            }
             Write-Info "Cloning Zenith repository into $dest..."
-            git clone --depth 1 $RepoUrl $dest
+            $gitCmd = Get-Command "git" -ErrorAction SilentlyContinue
+            if ($gitCmd) {
+                git clone --depth 1 $RepoUrl $dest
+            } else {
+                Write-Err "Git is required to clone Zenith repository. Please install git or run from the Zenith directory."
+                exit 1
+            }
         }
         Set-Location $dest
         return $dest
+    }
+}
+
+function Find-DockerDesktopPath {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Docker\Docker Desktop.exe"),
+        "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return $c }
+    }
+    try {
+        $reg = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Docker Desktop.exe" -ErrorAction SilentlyContinue
+        if ($reg -and $reg.'(default)' -and (Test-Path $reg.'(default)')) {
+            return $reg.'(default)'
+        }
+    } catch { }
+    return $null
+}
+
+function Start-DockerEngine {
+    $ddPath = Find-DockerDesktopPath
+    if ($ddPath) {
+        Write-Info "Docker Desktop is installed but stopped. Automatically starting engine ($ddPath)..."
+        try {
+            Start-Process -FilePath $ddPath
+        } catch {
+            Write-Warn "Could not launch Docker Desktop automatically: $_"
+            return $false
+        }
+        Write-Host -NoNewline "  Waiting for Docker engine to ignite"
+        for ($i = 1; $i -le 30; $i++) {
+            Start-Sleep -Seconds 2
+            Write-Host -NoNewline "•"
+            try {
+                $check = (docker info 2>$null)
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host ""
+                    Write-Ok "Docker engine is online and responding!"
+                    return $true
+                }
+            } catch { }
+        }
+        Write-Host ""
+    }
+    return $false
+}
+
+function Start-NativeZenithEngine {
+    param([string]$Reason = "Container engine unavailable")
+    Write-Warn "$Reason"
+    Write-StageHeader "[Native Engine] Activating Zenith Native Host Mode..."
+
+    $rootVenv = Join-Path $Workspace ".venv"
+    $rootPy = Join-Path $rootVenv "Scripts\python.exe"
+
+    if (-not (Test-Path $rootPy)) {
+        Write-Info "Bootstrapping Python virtual environment in .venv..."
+        try {
+            & python -m venv $rootVenv
+        } catch {
+            Write-Err "Failed to create Python virtual environment: $_"
+            exit 1
+        }
+    }
+
+    $pipExe = Join-Path $rootVenv "Scripts\pip.exe"
+    $reqFile = Join-Path $Workspace "requirements.txt"
+    if ((Test-Path $pipExe) -and (Test-Path $reqFile)) {
+        try {
+            & $rootPy -c "import fastapi, uvicorn" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Info "Installing Zenith dependencies..."
+                & $pipExe install -q -r $reqFile
+            }
+        } catch {
+            & $pipExe install -q -r $reqFile
+        }
+    }
+
+    $nativePidFile = Join-Path $Workspace "data\zenith-native.pid"
+    $nativeLogFile = Join-Path $Workspace "data\zenith-native.log"
+    New-Item -ItemType Directory -Force -Path (Join-Path $Workspace "data") | Out-Null
+
+    if (Test-Path $nativePidFile) {
+        try {
+            $oldPid = Get-Content $nativePidFile
+            Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+        } catch { }
+        Remove-Item $nativePidFile -Force -ErrorAction SilentlyContinue
+    }
+
+    $workerScript = Join-Path $Workspace "scripts\setup-worker.ps1"
+    if (Test-Path $workerScript) {
+        try { & $workerScript -Action "install-and-start" } catch { }
+    }
+
+    Write-Info "Starting Zenith Cognitive Operating Layer via run.py on port $TargetPort..."
+    $proc = Start-Process -FilePath $rootPy -ArgumentList "run.py" -WorkingDirectory $Workspace -PassThru -WindowStyle Hidden
+    Set-Content -Path $nativePidFile -Value $proc.Id -Encoding utf8
+    Write-Ok "Zenith Native Engine started (PID $($proc.Id))"
+
+    Write-StageHeader "Waiting for health checks..."
+    $ready = $false
+    Write-Host -NoNewline "  "
+    for ($i = 1; $i -le 30; $i++) {
+        Start-Sleep -Milliseconds 1200
+        Write-Host -NoNewline "•"
+        try {
+            $resp = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 2 -ErrorAction SilentlyContinue
+            if ($resp.status -eq "ok" -or $resp.system -eq "Zenith") {
+                $ready = $true
+                break
+            }
+        } catch { }
+    }
+    # Create desktop shortcut
+    $scScript = Join-Path $Workspace "scripts\create-windows-shortcut.ps1"
+    if (Test-Path $scScript) {
+        try { & $scScript } catch { }
+    }
+
+    if ($ready) {
+        Write-Ok "Healthcheck verified: Zenith is online at $TargetUrl"
+        try { Start-Process $TargetUrl } catch { }
+        exit 0
+    } else {
+        Write-Err "Zenith Native Engine did not respond in time. Check $nativeLogFile"
+        exit 1
     }
 }
 
@@ -126,16 +280,37 @@ Show-Banner
 $Workspace = Resolve-Workspace
 Write-Info "Working directory: $Workspace"
 
+$TargetPort = Get-TargetPort
+$TargetUrl = "http://localhost:$TargetPort"
+$HealthUrl = "$TargetUrl/api/health"
+
 # Quick mode handlers
 if ($Stop) {
     Write-StageHeader "Stopping Zenith services..."
-    docker compose down
+    docker compose down 2>$null
+    $nativePidFile = Join-Path $Workspace "data\zenith-native.pid"
+    if (Test-Path $nativePidFile) {
+        try {
+            $nPid = Get-Content $nativePidFile
+            Stop-Process -Id $nPid -Force -ErrorAction SilentlyContinue
+            Remove-Item $nativePidFile -Force -ErrorAction SilentlyContinue
+            Write-Ok "Native engine process stopped."
+        } catch { }
+    }
+    $workerScript = Join-Path $Workspace "scripts\setup-worker.ps1"
+    if (Test-Path $workerScript) {
+        try { & $workerScript -Action stop } catch { }
+    }
     Write-Ok "Zenith stopped."
     exit 0
 }
 if ($Restart) {
     Write-StageHeader "Restarting Zenith services..."
     docker compose restart
+    $workerScript = Join-Path $Workspace "scripts\setup-worker.ps1"
+    if (Test-Path $workerScript) {
+        try { & $workerScript -Action restart } catch { }
+    }
     Write-Ok "Zenith restarted."
     exit 0
 }
@@ -151,13 +326,17 @@ if ($Status) {
         Write-Host ""
     }
     docker compose ps
-    Write-Host "`nHealthcheck (/api/health):" -ForegroundColor Gray
+    Write-Host "`nHealthcheck (/api/health on port $TargetPort):" -ForegroundColor Gray
     try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:8005/api/health" -TimeoutSec 3
+        $resp = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 3
         $resp | ConvertTo-Json -Depth 3
-        Write-Ok "Zenith is online and responding."
     } catch {
-        Write-Warn "Zenith is not responding on port 8005."
+        Write-Warn "Zenith is not responding on $TargetUrl"
+    }
+    $workerScript = Join-Path $Workspace "scripts\setup-worker.ps1"
+    if (Test-Path $workerScript) {
+        Write-Host "`nAntigravity Worker (port 8022):" -ForegroundColor Gray
+        try { & $workerScript -Action status } catch { }
     }
     exit 0
 }
@@ -196,12 +375,15 @@ $TotalRamMb = if ($OsInfo) { [math]::Round($OsInfo.TotalVisibleMemorySize / 1024
 $AvailRamMb = if ($OsInfo) { [math]::Round($OsInfo.FreePhysicalMemory / 1024) } else { 2048 }
 $TotalRamGb = [math]::Round($TotalRamMb / 1024, 1)
 
-$GpuName = if ($GpuInfo) { ($GpuInfo | Select-Object -First 1).Name } else { "None / Integrated" }
+$GpuList = if ($GpuInfo) { @($GpuInfo) } else { @() }
+$NvidiaGpu = $GpuList | Where-Object { $_.Name -match "NVIDIA" } | Select-Object -First 1
+$PrimaryGpu = if ($NvidiaGpu) { $NvidiaGpu } elseif ($GpuList.Count -gt 0) { $GpuList[0] } else { $null }
+$GpuName = if ($PrimaryGpu) { $PrimaryGpu.Name } else { "None / Integrated" }
 $GpuAvailable = ($GpuName -ne "None / Integrated")
-$GpuIsNvidia = ($GpuName -match "NVIDIA")
+$GpuIsNvidia = ($NvidiaGpu -ne $null)
 
 $MemClass = if ($TotalRamMb -lt 2048) { "low" } elseif ($TotalRamMb -lt 8192) { "standard" } else { "high" }
-$RecommendedWorkers = if ($TotalRamMb -lt 2048) { 1 } else { 2 }
+$RecommendedWorkers = if ($TotalRamMb -lt 2048) { 1 } elseif ($TotalRamMb -lt 8192) { 2 } else { 4 }
 
 # Save Profile (Zero secrets stored)
 New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
@@ -233,7 +415,7 @@ $ProfileObject = [PSCustomObject]@{
     }
     runtime_adaptation = [PSCustomObject]@{
         recommended_workers = $RecommendedWorkers
-        default_port = $DefaultPort
+        default_port = $TargetPort
         zenith_version = $ZenithVersion
         generated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     }
@@ -248,33 +430,31 @@ Write-Ok "Profile saved: $ProfileFile (Zero secrets stored)"
 # ── STAGE 2: CHECKING DOCKER ──────────────────────────────────────────────────
 Write-StageHeader "[2/8] Checking Docker..."
 
+$DockerReady = $false
 $DockerInstalled = (Get-Command "docker" -ErrorAction SilentlyContinue) -ne $null
 
-if (-not $DockerInstalled) {
-    Write-Warn "Docker is not installed on this host."
-    Write-Host "  Zenith requires Docker Desktop (with WSL2 engine) on Windows for secure containerization."
-    if (Prompt-Confirm "Install Docker Desktop via winget now?" "y") {
-        Write-Info "Executing winget install Docker.DockerDesktop..."
-        winget install -e --id Docker.DockerDesktop --accept-source-agreements --accept-package-agreements
-        Write-Ok "Docker Desktop installer triggered. Please complete setup and restart your terminal."
-        exit 0
-    } else {
-        Write-Err "Docker installation declined. Zenith cannot run without Docker."
-        exit 1
+if ($DockerInstalled) {
+    try {
+        $dockerCheck = (docker info 2>$null)
+        if ($LASTEXITCODE -eq 0) { $DockerReady = $true }
+    } catch { }
+
+    if (-not $DockerReady) {
+        Write-Info "Docker CLI detected, but engine is stopped. Attempting automatic ignition..."
+        $DockerReady = Start-DockerEngine
+    }
+} else {
+    $deskPath = Find-DockerDesktopPath
+    if ($deskPath) {
+        Write-Info "Docker Desktop found at $deskPath. Attempting automatic ignition..."
+        $DockerReady = Start-DockerEngine
     }
 }
 
-# Verify Docker daemon is running
-$DockerReady = $false
-try {
-    $null = docker info 2>&1
-    if ($LASTEXITCODE -eq 0) { $DockerReady = $true }
-} catch { }
-
 if (-not $DockerReady) {
-    Write-Warn "Docker Desktop is installed but the engine is not responding."
-    Write-Info "Please ensure Docker Desktop is launched and the engine has finished starting."
-    exit 1
+    Write-Warn "Docker engine is unavailable or could not be ignited automatically."
+    Write-Info "Activating Zenith Native Engine (Zero-Failure Fallback)..."
+    Start-NativeZenithEngine "Docker is not active. Falling back to Zenith Native Host Mode."
 }
 
 $DockerVer = (docker --version)
@@ -285,7 +465,7 @@ Write-StageHeader "[3/8] Installing missing dependencies..."
 
 $ComposeReady = $false
 try {
-    $null = docker compose version 2>&1
+    $composeCheck = (docker compose version 2>$null)
     if ($LASTEXITCODE -eq 0) { $ComposeReady = $true }
 } catch { }
 
@@ -293,49 +473,35 @@ if ($ComposeReady) {
     $cVer = (docker compose version --short 2>$null)
     Write-Ok "Docker Compose plugin ($cVer) detected"
 } else {
-    Write-Err "Modern 'docker compose' plugin was not found in Docker CLI."
-    Write-Info "Please update Docker Desktop to version 4.x or higher to enable Compose v2."
-    exit 1
+    Write-Warn "Modern 'docker compose' plugin was not found in Docker CLI."
+    Write-Info "Activating Zenith Native Engine (Zero-Failure Fallback)..."
+    Start-NativeZenithEngine "Docker Compose plugin is unavailable. Falling back to Zenith Native Host Mode."
 }
 
 # ── STAGE 4: VALIDATING ZENITH CONFIGURATION ──────────────────────────────────
 Write-StageHeader "[4/8] Validating Zenith configuration..."
 
-# Create runtime directories
+# 1. Disk Space check (at least 2GB free)
+try {
+    $driveLetter = (Get-Item (Get-Location).Path).PSDrive.Name
+    $drive = Get-PSDrive -Name $driveLetter -ErrorAction SilentlyContinue
+    if ($drive -and $drive.Free) {
+        $freeGb = [math]::Round($drive.Free / 1GB, 1)
+        if ($freeGb -lt 2.0) {
+            Write-Warn "Low disk space: only $freeGb GB available. 2+ GB recommended."
+        } else {
+            Write-Ok "Disk space: $freeGb GB available"
+        }
+    }
+} catch { }
+
+# 2. Create runtime directories
 @("data", "data\memory", "static\screenshots", "$env:TEMP\zenith-files") | ForEach-Object {
     if (-not (Test-Path $_)) { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
 }
 Write-Ok "Directory structure verified"
 
-# Check Port 8005
-$PortInUse = $false
-try {
-    $tcp = New-Object System.Net.Sockets.TcpClient
-    $iar = $tcp.BeginConnect("127.0.0.1", 8005, $null, $null)
-    $success = $iar.AsyncWaitHandle.WaitOne(400, $false)
-    if ($success -and $tcp.Connected) {
-        $PortInUse = $true
-        $tcp.EndConnect($iar)
-    }
-    $tcp.Close()
-} catch { }
-
-if ($PortInUse) {
-    try {
-        $testResp = Invoke-RestMethod -Uri "http://localhost:8005/api/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($testResp.system -eq "Zenith") {
-            Write-Ok "Port 8005 is already hosting an active Zenith instance."
-        } else {
-            Write-Warn "Port 8005 is occupied by another process on your machine."
-        }
-    } catch {
-        Write-Warn "Port 8005 is currently occupied by another process."
-    }
-} else {
-    Write-Ok "Port 8005 is available"
-}
-
-# Sync .env from .env.example preserving existing values
+# 3. Sync .env from .env.example preserving existing values
 if (-not (Test-Path ".env")) {
     if (Test-Path ".env.example") {
         Copy-Item ".env.example" ".env"
@@ -345,14 +511,16 @@ if (-not (Test-Path ".env")) {
     }
 } else {
     if (Test-Path ".env.example") {
-        $existingLines = Get-Content ".env"
-        $exampleLines = Get-Content ".env.example"
+        $existingLines = Get-Content ".env" -ErrorAction SilentlyContinue
+        if ($null -eq $existingLines) { $existingLines = @() }
+        $exampleLines = Get-Content ".env.example" -ErrorAction SilentlyContinue
+        if ($null -eq $exampleLines) { $exampleLines = @() }
         $mergedCount = 0
         foreach ($line in $exampleLines) {
             $trimmed = $line.Trim()
-            if ($trimmed.StartsWith("#") -or [string]::IsNullOrWhiteSpace($trimmed)) { continue }
+            if ($trimmed.StartsWith("#") -or [string]::IsNullOrWhiteSpace($trimmed) -or -not ($trimmed.Contains("="))) { continue }
             $key = $trimmed.Split("=")[0].Trim()
-            $found = $existingLines | Where-Object { $_.Trim().StartsWith("$key=") }
+            $found = $existingLines | Where-Object { $_ -and ($_ -match "^\s*$([regex]::Escape($key))\s*=") }
             if (-not $found) {
                 Add-Content -Path ".env" -Value $line
                 $mergedCount++
@@ -366,11 +534,43 @@ if (-not (Test-Path ".env")) {
     }
 }
 
-# Check API Studio Key without leaking secrets
+$TargetPort = Get-TargetPort
+$TargetUrl = "http://localhost:$TargetPort"
+$HealthUrl = "$TargetUrl/api/health"
+
+# 4. Check Target Port
+$PortInUse = $false
+try {
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    $iar = $tcp.BeginConnect("127.0.0.1", $TargetPort, $null, $null)
+    $success = $iar.AsyncWaitHandle.WaitOne(400, $false)
+    if ($success -and $tcp.Connected) {
+        $PortInUse = $true
+        $tcp.EndConnect($iar)
+    }
+    $tcp.Close()
+} catch { }
+
+if ($PortInUse) {
+    try {
+        $testResp = Invoke-RestMethod -Uri "$TargetUrl/api/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($testResp.system -eq "Zenith" -or $testResp.status -eq "ok") {
+            Write-Ok "Port $TargetPort is already hosting an active Zenith instance."
+        } else {
+            Write-Warn "Port $TargetPort is occupied by another process on your machine."
+        }
+    } catch {
+        Write-Warn "Port $TargetPort is currently occupied by another process."
+    }
+} else {
+    Write-Ok "Port $TargetPort is available"
+}
+
+# 5. Check API Studio Key without leaking secrets
 $EnvContent = Get-Content ".env" -ErrorAction SilentlyContinue
 $KeyConfigured = $false
 foreach ($line in $EnvContent) {
-    if ($line -match '^\s*GEMINI_API_KEY=(.+)$') {
+    if ($line -match '^\s*GEMINI_API_KEY\s*=\s*([^#\r\n]+)') {
         $v = $Matches[1].Trim().Trim('"').Trim("'")
         if (-not [string]::IsNullOrWhiteSpace($v) -and $v -ne "your_api_key_here") {
             $KeyConfigured = $true
@@ -390,20 +590,19 @@ Write-StageHeader "[5/8] Building containers..."
 
 $ImageExists = $false
 try {
-    $img = docker images -q zenith:latest 2>&1
+    $img = (docker images -q zenith:latest 2>$null)
     if (-not [string]::IsNullOrWhiteSpace($img)) { $ImageExists = $true }
 } catch { }
 
 if ($Update) {
     Write-Info "Pulling latest repository updates..."
-    git pull --rebase
+    try { git pull --rebase } catch { Write-Warn "Git pull notice: $_" }
 }
 
 if ($ImageExists -and -not $Repair -and -not $Update) {
     Write-Ok "Reusing existing production image zenith:latest (run with -Repair to rebuild)"
 } else {
     Write-Info "Building production container image..."
-    $buildArg = if ($Repair) { "--no-cache" } else { "" }
     if ($Repair) {
         docker compose build --no-cache
     } else {
@@ -415,9 +614,20 @@ if ($ImageExists -and -not $Repair -and -not $Update) {
 # ── STAGE 6: STARTING SERVICES ────────────────────────────────────────────────
 Write-StageHeader "[6/8] Starting services..."
 
+# Initialize and start Antigravity Coding Worker on the host
+$workerScript = Join-Path $Workspace "scripts\setup-worker.ps1"
+if (Test-Path $workerScript) {
+    Write-Info "Configuring Antigravity Coding Worker (agy)..."
+    try {
+        & $workerScript -Action "install-and-start"
+    } catch {
+        Write-Warn "Antigravity worker startup encountered a warning: $_"
+    }
+}
+
 $ContainerRunning = $false
 try {
-    $psOut = docker compose ps -q zenith 2>&1
+    $psOut = (docker compose ps -q --status running zenith 2>$null)
     if (-not [string]::IsNullOrWhiteSpace($psOut)) { $ContainerRunning = $true }
 } catch { }
 
@@ -432,8 +642,6 @@ if ($ContainerRunning -and -not $Repair -and -not $Update) {
 # ── STAGE 7: WAITING FOR HEALTH CHECKS ────────────────────────────────────────
 Write-StageHeader "[7/8] Waiting for health checks..."
 
-$TargetUrl = "http://localhost:8005"
-$HealthUrl = "$TargetUrl/api/health"
 $IsHealthy = $false
 
 Write-Host -NoNewline "  "
@@ -452,15 +660,29 @@ Write-Host ""
 
 if ($IsHealthy) {
     Write-Ok "Healthcheck verified: Zenith is online and responsive!"
+    $tokenFile = Join-Path $env:USERPROFILE ".gemini\antigravity-cli\antigravity-oauth-token"
+    if (-not (Test-Path $tokenFile)) {
+        Write-Host "`n  💡 First-Time Antigravity Setup:" -ForegroundColor Yellow
+        Write-Host "     To enable autonomous coding agents, run 'agy' once in your terminal to sign in with Google.`n" -ForegroundColor DarkGray
+    }
 } else {
     Write-Err "Zenith did not become healthy in 60 seconds."
     Write-Host "`nDiagnostic logs:" -ForegroundColor Gray
     docker compose logs --tail=25
+    Write-Host "`nTroubleshooting:" -ForegroundColor Yellow
+    Write-Host "  1. Check full logs:    docker compose logs -f"
+    Write-Host "  2. Try repair build:   .\zenith-install.ps1 -Repair"
+    Write-Host "  3. Verify port ${TargetPort}:   curl -v http://localhost:$TargetPort/api/health"
     exit 1
 }
 
 # ── STAGE 8: OPENING ZENITH ───────────────────────────────────────────────────
 Write-StageHeader "[8/8] Opening Zenith..."
+
+$scScript = Join-Path $Workspace "scripts\create-windows-shortcut.ps1"
+if (Test-Path $scScript) {
+    try { & $scScript } catch { }
+}
 
 try {
     Start-Process $TargetUrl
@@ -474,7 +696,7 @@ Write-Host "`n╔═════════════════════
 Write-Host "║                                                                          ║" -ForegroundColor Green
 Write-Host "║                   ✦  ZENITH IS READY & OPERATIONAL  ✦                   ║" -ForegroundColor Green
 Write-Host "║                                                                          ║" -ForegroundColor Green
-Write-Host "║   Web Interface:     http://localhost:8005                               ║" -ForegroundColor Green
+Write-Host "║   Web Interface:     $TargetUrl                               ║" -ForegroundColor Green
 Write-Host "║   Container:         zenith-core                                         ║" -ForegroundColor Green
 Write-Host "║   Status:            Healthy (HTTP 200 OK)                               ║" -ForegroundColor Green
 Write-Host "║   System Profile:    ~/.zenith/system-info.json                          ║" -ForegroundColor Green

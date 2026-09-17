@@ -41,21 +41,62 @@ def _get_tz():
         return dt.timezone.utc
 
 
+_token_cache: dict[str, Any] = {
+    "access_token": "",
+    "expires_at": 0.0,
+    "last_failure": 0.0,
+    "failure_err": "",
+}
+
+
 async def _access_token() -> str:
-    """Exchange the stored refresh token for a short-lived access token."""
+    """Exchange the stored refresh token for a short-lived access token with caching and failure backoff."""
     if not _connected():
         raise RuntimeError("Google Calendar not configured (set GOOGLE_REFRESH_TOKEN).")
+
+    import time
+    now = time.time()
+
+    # If we have a cached valid token, reuse it
+    if _token_cache["access_token"] and now < _token_cache["expires_at"]:
+        return _token_cache["access_token"]
+
+    # If recent refresh failed, back off for 10 minutes (600s) to avoid spamming Google with 400s
+    if _token_cache["last_failure"] and (now - _token_cache["last_failure"] < 600):
+        remaining = int(600 - (now - _token_cache["last_failure"]))
+        raise RuntimeError(f"Google OAuth token refresh in backoff ({remaining}s remaining): {_token_cache['failure_err']}")
+
     payload = {
         "client_id": settings.google_client_id,
         "client_secret": settings.google_client_secret,
         "refresh_token": settings.google_refresh_token,
         "grant_type": "refresh_token",
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(_TOKEN_URL, data=payload)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Token refresh failed: {resp.text[:200]}")
-    return resp.json()["access_token"]
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(_TOKEN_URL, data=payload)
+        if resp.status_code >= 400:
+            err_msg = resp.text[:200]
+            _token_cache["last_failure"] = now
+            _token_cache["failure_err"] = err_msg
+            _token_cache["access_token"] = ""
+            _token_cache["expires_at"] = 0.0
+            raise RuntimeError(f"Token refresh failed ({resp.status_code}): {err_msg}")
+
+        data = resp.json()
+        token = data.get("access_token", "")
+        if not token:
+            raise RuntimeError(f"Token response missing access_token: {resp.text[:200]}")
+        expires_in = data.get("expires_in", 3600)
+        _token_cache["access_token"] = token
+        _token_cache["expires_at"] = now + max(expires_in - 60, 60)
+        _token_cache["last_failure"] = 0.0
+        _token_cache["failure_err"] = ""
+        return token
+    except httpx.RequestError as exc:
+        _token_cache["last_failure"] = now
+        _token_cache["failure_err"] = str(exc)
+        raise RuntimeError(f"Token refresh network error: {exc}")
 
 
 async def _request(method: str, path: str, **kw) -> dict:

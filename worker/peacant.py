@@ -45,7 +45,90 @@ _PORT = int(__import__("os").environ.get("ZENITH_WORKER_PORT", "8022"))
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "worker": "antigravity-agy"}
+    auth_info = agy.check_auth_status()
+    return {
+        "status": "ok",
+        "worker": "antigravity-agy",
+        "version": "1.0.0",
+        "agy_installed": auth_info["installed"],
+        "authenticated": auth_info["authenticated"],
+    }
+
+
+@app.get("/status")
+async def status():
+    auth_info = agy.check_auth_status()
+    all_tasks = T.store.list()
+    active_count = sum(1 for t in all_tasks if t.status in (T.QUEUED, T.STARTING, T.RUNNING, T.WAITING_FOR_INPUT))
+    return {
+        "status": "ok",
+        "worker": "antigravity-agy",
+        "version": "1.0.0",
+        "host": _HOST,
+        "port": _PORT,
+        "agy": auth_info,
+        "tasks": {
+            "total": len(all_tasks),
+            "active": active_count,
+        },
+    }
+
+
+@app.post("/auth/login")
+async def auth_login():
+    """Trigger one-time interactive Google sign-in via Antigravity CLI."""
+    import subprocess
+    auth_info = agy.check_auth_status()
+    if auth_info["authenticated"]:
+        return {
+            "ok": True,
+            "status": "already_authenticated",
+            "message": "Antigravity CLI is already authenticated with Google.",
+            "agy": auth_info,
+        }
+
+    agy_bin = agy._resolve_agy_binary()
+    try:
+        # Launch non-blocking background login prompt as the host user
+        subprocess.Popen(
+            [agy_bin, "--print", "Hello, Antigravity! Please confirm authentication."],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return {
+            "ok": True,
+            "status": "initiated",
+            "message": "Google OAuth prompt initiated. Follow browser prompt to complete sign-in.",
+            "agy_path": agy_bin,
+            "cli_command": "python -m worker.manage login",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to launch Antigravity CLI: {exc}")
+
+
+@app.post("/auth/logout")
+async def auth_logout():
+    """Clear local Antigravity OAuth tokens."""
+    home = Path.home()
+    token_files = [
+        home / ".gemini" / "antigravity-cli" / "antigravity-oauth-token",
+        home / ".gemini" / "antigravity" / "token.json",
+    ]
+    removed = []
+    for f in token_files:
+        if f.is_file():
+            try:
+                f.unlink()
+                removed.append(str(f))
+            except Exception:
+                pass
+    return {
+        "ok": True,
+        "status": "logged_out",
+        "removed_tokens": removed,
+        "authenticated": False,
+    }
 
 
 @app.post("/tasks")

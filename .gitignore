@@ -28,6 +28,8 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 data/*.db-journal
+data/*.pid
+data/*.log
 *.db
 *.db-journal
 *.sqlite
