@@ -17,8 +17,11 @@ class Runner:
             self._svc = get_agent_service()
         return self._svc
 
-    async def start(self, name: str, goal: str, context: str = "") -> str:
-        return await self.service().start(name, goal, context)
+    async def start(self, name: str, goal: str, context: str = "", depth: int = 0, tier: str = "standard") -> str:
+        return await self.service().start(name, goal, context, depth=depth, tier=tier)
+
+    async def execute_task(self, name: str, task: str, context: str = "", emit: Any = None, depth: int = 0, tier: str = "standard") -> dict:
+        return await self.service().execute_task(name, task, context=context, emit=emit, depth=depth, tier=tier)
 
     def list(self):
         return self.service().list()

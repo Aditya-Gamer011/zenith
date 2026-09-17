@@ -184,6 +184,97 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ──────────────────────────────────────────────────────────────────────────────
+# AUTO-INSTALL PREREQUISITES & ARCHIVE RETRIEVAL (STANDALONE SUPPORT)
+# ──────────────────────────────────────────────────────────────────────────────
+ensure_git_installed() {
+    if command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+    log_info "Git is not detected. Attempting automatic installation via system package manager..."
+    local SUDO=""
+    if [ "$(id -u 2>/dev/null || echo 1000)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+    fi
+
+    if command -v apt-get >/dev/null 2>&1; then
+        $SUDO apt-get update -qq >/dev/null 2>&1 || true
+        $SUDO apt-get install -y -qq git >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        $SUDO dnf install -y -q git >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        $SUDO yum install -y -q git >/dev/null 2>&1 || true
+    elif command -v pacman >/dev/null 2>&1; then
+        $SUDO pacman -Sy --noconfirm git >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        $SUDO apk add --no-cache git >/dev/null 2>&1 || true
+    elif command -v zypper >/dev/null 2>&1; then
+        $SUDO zypper --non-interactive install git >/dev/null 2>&1 || true
+    elif command -v brew >/dev/null 2>&1; then
+        brew install git >/dev/null 2>&1 || true
+    fi
+
+    if command -v git >/dev/null 2>&1; then
+        log_ok "Git installed successfully."
+        return 0
+    fi
+    return 1
+}
+
+retrieve_repo_archive() {
+    local target_dir="$1"
+    mkdir -p "$target_dir"
+    log_info "Downloading Zenith repository archive directly from GitHub..."
+    local archive_url="https://github.com/Aditya-Gamer011/zenith/archive/refs/heads/main.tar.gz"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$archive_url" | tar -xzf - --strip-components=1 -C "$target_dir" 2>/dev/null || return 1
+        return 0
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- "$archive_url" | tar -xzf - --strip-components=1 -C "$target_dir" 2>/dev/null || return 1
+        return 0
+    fi
+    return 1
+}
+
+ensure_python_installed() {
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -c "import venv" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    log_info "Python 3 environment or venv module not detected. Attempting automatic installation..."
+    local SUDO=""
+    if [ "$(id -u 2>/dev/null || echo 1000)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+    fi
+
+    if command -v apt-get >/dev/null 2>&1; then
+        $SUDO apt-get update -qq >/dev/null 2>&1 || true
+        $SUDO apt-get install -y -qq python3 python3-pip python3-venv python3-dev >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        $SUDO dnf install -y -q python3 python3-pip python3-devel >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        $SUDO yum install -y -q python3 python3-pip python3-devel >/dev/null 2>&1 || true
+    elif command -v pacman >/dev/null 2>&1; then
+        $SUDO pacman -Sy --noconfirm python python-pip >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        $SUDO apk add --no-cache python3 py3-pip python3-dev >/dev/null 2>&1 || true
+    elif command -v zypper >/dev/null 2>&1; then
+        $SUDO zypper --non-interactive install python3 python3-pip python3-devel >/dev/null 2>&1 || true
+    elif command -v brew >/dev/null 2>&1; then
+        brew install python@3.12 >/dev/null 2>&1 || true
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        log_ok "Python 3 environment configured."
+        return 0
+    elif command -v python >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # LOCATE OR CLONE ZENITH WORKSPACE
 # ──────────────────────────────────────────────────────────────────────────────
 resolve_workspace() {
@@ -201,13 +292,25 @@ resolve_workspace() {
             if [ -d "$ZENITH_DIR" ]; then
                 rm -rf "$ZENITH_DIR"
             fi
-            log_info "Cloning Zenith repository into $ZENITH_DIR..."
-            if command -v git >/dev/null 2>&1; then
-                git clone --depth 1 "$REPO_URL" "$ZENITH_DIR"
-            else
-                log_err "Git is required to clone Zenith repository. Please install git or run from the Zenith directory."
+            mkdir -p "$ZENITH_DIR"
+            local retrieved=false
+            if ensure_git_installed; then
+                log_info "Cloning Zenith repository into $ZENITH_DIR..."
+                if git clone --depth 1 "$REPO_URL" "$ZENITH_DIR" 2>/dev/null; then
+                    retrieved=true
+                fi
+            fi
+            if [ "$retrieved" != true ]; then
+                log_info "Git clone unavailable or failed; retrieving Zenith repository archive directly..."
+                if retrieve_repo_archive "$ZENITH_DIR"; then
+                    retrieved=true
+                fi
+            fi
+            if [ "$retrieved" != true ] || [ ! -f "$ZENITH_DIR/run.py" ]; then
+                log_err "Failed to retrieve Zenith repository. Please install git or curl, or download Zenith manually."
                 exit 1
             fi
+            log_ok "Zenith repository successfully acquired."
         fi
     fi
     cd "$ZENITH_DIR"
@@ -315,16 +418,26 @@ start_native_engine() {
     local root_pip="$root_venv/bin/pip"
 
     if [ ! -f "$root_py" ]; then
+        if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+            ensure_python_installed || true
+        fi
         log_info "Bootstrapping Python virtual environment in .venv..."
         if command -v python3 >/dev/null 2>&1; then
             python3 -m venv "$root_venv" || {
-                log_err "Failed to create Python virtual environment with python3."
-                exit 1
+                log_info "Retrying Python venv bootstrapping after ensuring packages..."
+                ensure_python_installed || true
+                python3 -m venv "$root_venv" || {
+                    log_err "Failed to create Python virtual environment with python3."
+                    exit 1
+                }
             }
         elif command -v python >/dev/null 2>&1; then
             python -m venv "$root_venv" || {
-                log_err "Failed to create Python virtual environment with python."
-                exit 1
+                ensure_python_installed || true
+                python -m venv "$root_venv" || {
+                    log_err "Failed to create Python virtual environment with python."
+                    exit 1
+                }
             }
         else
             log_err "Python is required for Zenith Native Host Mode. Please install python3."
@@ -817,6 +930,13 @@ log_ok "$DOCKER_VERSION active and responsive"
 
 # ── STAGE 3: INSTALLING MISSING DEPENDENCIES ──────────────────────────────────
 log_stage "[3/8] Installing missing dependencies..."
+
+if ! command -v git >/dev/null 2>&1; then
+    ensure_git_installed || true
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+    ensure_python_installed || true
+fi
 
 COMPOSE_CMD=""
 if $DOCKER_CMD compose version >/dev/null 2>&1; then

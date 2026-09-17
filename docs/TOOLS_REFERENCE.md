@@ -62,6 +62,34 @@ Zenith includes over 60 built-in tools organized across 12 functional domains. T
 | `fetch_stock_photo`| `query` (string) | Search high-resolution stock photography (Unsplash, Pexels, Pixabay, Wikimedia) and download locally. |
 | `cdn_upload` | `file_path` (string) | Upload a local asset to a public CDN and return a shareable public URL. |
 
+
+---
+
+## 4.1. Media Studio & Audio/Video Engineering
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `media_info` | `file_path` (string) | Comprehensive technical metadata inspection via `ffprobe` (codecs, bitrate, sample rate, channels, resolution, FPS, duration). |
+| `convert_media` | `input_path` (string), `output_format` ("mp3" \| "wav" \| "aac" \| "flac" \| "mp4" \| "webm" \| "gif"), `quality` ("high" \| "medium" \| "low") | Audio and video transcoding with optimized encoding presets. |
+| `trim_media` | `input_path` (string), `start_time` (string), `duration` (string), `end_time` (string) | Precision trimming and cutting of audio and video clips. |
+| `extract_frames`| `video_path` (string), `timestamp` (string), `count` (int), `output_format` ("jpg" \| "png") | Snapshot high-resolution video frames and thumbnails at specific timestamps. |
+| `merge_audio_video` | `video_path` (string), `audio_path` (string), `replace_audio` (bool) | Combine voiceovers, soundtracks, or background music with video footage. |
+| `compress_media` | `input_path` (string), `target_size_mb` (float, default 10.0) | Smart compression targeting file size limits (e.g. Discord 25MB, email attachments). |
+| `text_to_speech` | `text` (string), `voice` (string), `speed` (string) | Studio-quality neural speech synthesis (MP3) via Edge TTS with human voices across global accents. |
+| `download_web_audio` | `url` (string) | Download and extract clean 192kbps MP3 audio from YouTube, SoundCloud, Twitter/X, and web URLs. |
+| `download_web_video` | `url` (string), `max_resolution` ("720" \| "1080") | Download video clips from supported web platforms capped at target resolution. |
+| `web_media_info` | `url` (string) | Remote video/audio inspection without downloading (title, channel, views, chapters, duration). |
+| `create_collage` | `image_paths` (array), `layout` ("auto" \| "2x2" \| "1x2" \| "1x3" \| "3x2"), `spacing` (int), `bg_color` (string) | Generate aesthetic photo grids and collages. |
+| `generate_meme` | `image_path` (string), `top_text` (string), `bottom_text` (string), `style` ("impact") | Generate internet memes with bold outlined text. |
+| `extract_palette` | `image_path` (string), `num_colors` (int, default 5) | Extract dominant color palette from images with visual hex swatches and RGB codes. |
+| `create_animated_gif` | `image_paths` (array), `duration_ms` (int), `loop` (int) | Create animated GIFs from ordered image sequences with custom frame delays. |
+| `create_audiogram` | `audio_path` (string), `background_image` (string), `title` (string), `artist_or_host` (string), `wave_color` (string), `style` ("wave" \| "p2p" \| "cline") | Turn speech voiceovers, podcasts, and music into animated waveform MP4 videos with custom branded cards. |
+| `create_slideshow` | `image_paths` (array), `audio_path` (string), `duration_per_slide` (float), `resolution` (string) | Assemble multiple images into high-definition MP4 video reels with optional background audio narration. |
+| `normalize_audio` | `input_path` (string), `target_lufs` (float, default -14.0) | Standardize audio loudness to streaming and broadcast standards (-14 LUFS) using FFmpeg EBU R128 loudnorm. |
+| `overlay_media` | `base_media_path` (string), `overlay_path` (string), `position` ("bottom_right" \| "bottom_left" \| "top_right" \| "top_left" \| "center"), `scale` (float) | Watermark videos or images with logos, badges, or picture-in-picture media overlays. |
+| `apply_image_filter` | `image_path` (string), `filter_name` ("cinematic" \| "vintage" \| "noir" \| "cyberpunk" \| "vibrant" \| "dramatic"), `intensity` (float) | Apply photographic aesthetic filters and cinematic color grading to images. |
+| `burn_subtitles` | `video_path` (string), `subtitles_srt_or_path` (string), `font_size` (int), `primary_color` (string) | Burn hardcoded, styled subtitles into videos from an SRT file or raw text string. |
+
 ---
 
 ## 5. Developer Tools & GitHub Suite
@@ -85,9 +113,40 @@ Zenith includes over 60 built-in tools organized across 12 functional domains. T
 
 ---
 
+## 5.1. Autonomous SWE Coding Engine (Codex/Devin Tier)
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `repo_map` | `repo_path` (string), `max_depth` (int, default 4), `max_tokens` (int, default 3500) | Generates a compact AST-aware repository skeleton highlighting classes, functions, methods, signatures, and docstrings without reading raw source files. |
+| `find_symbol` | `symbol_name` (string), `repo_path` (string), `exact` (bool, default False) | Instant symbol definition locator across Python, JS/TS, Go, and Rust files. Returns file path, line number, signature, and docstring. |
+| `find_references` | `symbol_name` (string), `repo_path` (string), `max_results` (int, default 50) | Cross-repository symbol call site auditor. Locates function/class callers, instantiations, and imports with line numbers and code snippets. |
+| `apply_patch` | `path` (string), `target_chunk` (string), `replacement_chunk` (string), `patch_diff` (string) | Surgical search-and-replace / unified diff applicator. Automatically runs AST/syntax validation (`compile`/`ast.parse`) before writing, creates atomic rollback checkpoints, and checks change minimization. |
+| `apply_patch_transaction` | `patches` (array of patch dicts), `repo_path` (string) | Atomic multi-file patch transaction. Pre-validates syntax across all modified files before writing; automatically rolls back all changes if any chunk fails. |
+| `rollback_patch` | `checkpoint_id` (string, optional), `file_path` (string, optional) | Restores files from atomic pre-patch checkpoints in `.zenith_checkpoints` if a change caused regressions. |
+| `lint_code` | `file_path` (string), `repo_path` (string) | Lightweight AST static analysis detecting syntax errors, duplicate function definitions, mutable defaults, and bare except handlers. |
+| `run_tests` | `test_target` (string), `test_framework` ("auto" \| "pytest" \| "npm" \| "cargo" \| "go"), `timeout` (int) | Specialized SWE test runner with failure isolation and log compaction. Extracts failing test names, exact tracebacks, and root-cause categories (`SYNTAX_ERROR`, `IMPORT_ERROR`, `ASSERTION_FAILURE`, `TYPE_ERROR`). |
+| `inspect_diff` | `repo_path` (string), `staged_only` (bool), `file_path` (string) | Change minimization audit and safety gate. Reports `+` and `-` line churn, warns against large deletions or comment stripping, and encloses diffs in anti-injection tags. |
+| `swe_status` | *(none)* | Reports active SWE task state machine phase (INVESTIGATION -> PLANNING -> PATCHING -> TESTING -> VERIFIED) and edit thrashing detector metrics. |
+
+---
+
+## 5.2. Repository Intelligence & Hierarchical Code Comprehension
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `analyze_dependency_graph` | `target` (string, optional), `repo_path` (string, optional) | Traces architectural tiers: `API Endpoint -> Service -> Repository -> Database Table`. Computes blast radius and risk level (`HIGH`, `MEDIUM`, `LOW`) when modifying a component. |
+| `call_graph` | `function_name` (string), `repo_path` (string, optional), `direction` ("incoming" \| "outgoing", default "incoming"), `max_depth` (int, default 4) | Static call graph and execution path reachability engine. Traces which callers and execution chains reach a function (reverse call graph). |
+| `map_tests` | `target` (string), `repo_path` (string, optional) | Automatically maps modified functions, classes, or files to covering test files and test cases. Generates targeted verification commands (e.g. `pytest tests/test_auth.py -k test_get_user`). |
+| `semantic_code_search` | `query` (string), `repo_path` (string, optional), `max_results` (int, default 8) | Natural-language conceptual search across docstrings, comments, endpoints, and symbol names with concept synonym expansion (e.g., "Where is authentication handled?"). |
+| `analyze_architecture` | `repo_path` (string, optional) | Automatically constructs and maintains high-level system architecture: entry points, core services, database models, APIs, and dependencies. |
+| `get_hierarchical_context`| `task_query` (string), `subsystem` (string, optional), `depth` ("auto" \| "0" \| "1" \| "2" \| "3"), `repo_path` (string, optional) | Progressive disclosure context retriever: Tier 0 (Project Memory) -> Tier 1 (Subsystem Scope) -> Tier 2 (Symbol & Interface Skeleton) -> Tier 3 (Deep Verification & Call Paths). Prevents prompt saturation. |
+
+---
+
+
 ## 6. Host Shell & Container Management
 
-> **Safety Notice**: `shell` commands are gated by the `ALLOW_SHELL` environment variable in `.env`. Destructive commands require explicit human confirmation.
+> **Sovereign Sandbox & Safety Policy**: Zenith operates under the Sovereign Sandbox policy. While Zenith executes developer workflows autonomously anywhere across the workspace with zero user friction (no annoying review modals), sensitive user credentials (`~/.ssh`, `~/.aws`, `~/.gnupg`, browser cookies, `/etc/shadow`) and catastrophic commands (`rm -rf /`, fork bombs, disk formats) are strictly prohibited and isolated by policy. API tokens and credentials are automatically redacted in outputs.
 
 | Tool | Parameters | Description |
 | :--- | :--- | :--- |

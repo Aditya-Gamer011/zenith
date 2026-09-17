@@ -222,3 +222,27 @@ If files or dependencies were modified:
 ```bash
 ./zenith-install.sh --repair
 ```
+
+---
+
+## 6. Standalone Distribution Mode (Zero-Clone Distribution)
+
+Zenith's launchers and installer scripts are designed to work as completely independent, standalone binaries and scripts. You can send someone **only** `zenith.exe`, `zenith.bat`, `start.bat`, or `start.sh`—no repository checkout or pre-existing folders required.
+
+### How Standalone Mode Works:
+
+1. **Automatic Repository Acquisition**:
+   - When launched outside an existing repository directory, Zenith creates an isolated application directory at `~/.zenith/app` (or `%USERPROFILE%\.zenith\app` on Windows).
+   - If `git` is available on the path, it runs a shallow clone (`git clone --depth 1`).
+   - If `git` is not installed or the clone fails, Zenith automatically streams and extracts the repository archive (`main.zip` on Windows, `main.tar.gz` on Linux/macOS) directly from GitHub via HTTPS using built-in streaming (PowerShell `Expand-Archive`, Go `archive/zip`, or `tar -xzf`).
+
+2. **Automatic System Prerequisites (`git` & `python`)**:
+   - If `git` is missing on the target machine, the installer attempts automatic installation via the host's package manager:
+     - **Windows**: Automatic silent installation via `winget install --id Git.Git`.
+     - **Linux / macOS**: Automatic detection and installation via `apt-get`, `dnf`, `yum`, `pacman`, `apk`, `zypper`, or `brew`.
+   - If `python3` or `venv` is missing for Native Host Mode:
+     - **Windows**: Silent installation via `winget` or direct download and execution of the official Python 3.12 installer (`/quiet PrependPath=1`).
+     - **Linux / macOS**: Auto-installs `python3`, `python3-pip`, and `python3-venv` via the system package manager.
+
+3. **Guaranteed Execution**:
+   - Whether running in a full Docker environment or falling back to the zero-failure Zenith Native Engine, the standalone launchers will always bootstrap dependencies, install `.venv` packages, launch the service, and open the interface.

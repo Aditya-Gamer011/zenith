@@ -111,6 +111,94 @@ function Get-TargetPort {
     return $DefaultPort
 }
 
+# Auto-Install Prerequisites & Archive Retrieval (Standalone Support)
+function Ensure-GitInstalled {
+    if (Get-Command "git" -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    Write-Info "Git is not detected. Attempting automatic installation via winget..."
+    $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+    if ($winget) {
+        try {
+            Start-Process -FilePath "winget" -ArgumentList "install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements" -Wait -NoNewWindow
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            if (Get-Command "git" -ErrorAction SilentlyContinue) {
+                Write-Ok "Git installed successfully via winget."
+                return $true
+            }
+        } catch { }
+    }
+    return $false
+}
+
+function Retrieve-RepoArchive {
+    param([string]$Destination)
+    Write-Info "Downloading Zenith repository archive directly from GitHub..."
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $zipUrl = "https://github.com/Aditya-Gamer011/zenith/archive/refs/heads/main.zip"
+    $tempZip = Join-Path $env:TEMP "zenith-main-$([System.Guid]::NewGuid().ToString('N')).zip"
+    $tempExtract = Join-Path $env:TEMP "zenith-extract-$([System.Guid]::NewGuid().ToString('N'))"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
+        Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+        $innerDir = Join-Path $tempExtract "zenith-main"
+        if (Test-Path $innerDir) {
+            Copy-Item -Path "$innerDir\*" -Destination $Destination -Recurse -Force
+        } else {
+            Copy-Item -Path "$tempExtract\*" -Destination $Destination -Recurse -Force
+        }
+        return (Test-Path (Join-Path $Destination "run.py"))
+    } catch {
+        Write-Warn "Archive retrieval failed: $_"
+        return $false
+    } finally {
+        Remove-Item -Recurse -Force $tempZip -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tempExtract -ErrorAction SilentlyContinue
+    }
+}
+
+function Ensure-PythonInstalled {
+    if (Get-Command "python" -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    if (Get-Command "py" -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    Write-Info "Python is not detected. Attempting automatic installation..."
+    $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+    if ($winget) {
+        try {
+            Write-Info "Installing Python 3.12 via winget..."
+            Start-Process -FilePath "winget" -ArgumentList "install --id Python.Python.3.12 -e --source winget --silent --accept-source-agreements --accept-package-agreements" -Wait -NoNewWindow
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            if (Get-Command "python" -ErrorAction SilentlyContinue) {
+                Write-Ok "Python installed successfully via winget."
+                return $true
+            }
+        } catch { }
+    }
+
+    try {
+        Write-Info "Downloading official Python installer from python.org..."
+        $pyInstallerUrl = "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe"
+        $pyInstallerPath = Join-Path $env:TEMP "python-installer.exe"
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        Invoke-WebRequest -Uri $pyInstallerUrl -OutFile $pyInstallerPath -UseBasicParsing -ErrorAction Stop
+        Write-Info "Running silent Python installation..."
+        Start-Process -FilePath $pyInstallerPath -ArgumentList "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0" -Wait
+        Remove-Item -Force $pyInstallerPath -ErrorAction SilentlyContinue
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        if (Get-Command "python" -ErrorAction SilentlyContinue) {
+            Write-Ok "Python installed successfully."
+            return $true
+        }
+    } catch {
+        Write-Warn "Direct Python installer fallback encountered: $_"
+    }
+    return $false
+}
+
 # Resolve Workspace Location
 function Resolve-Workspace {
     if ((Test-Path "run.py") -and (Test-Path "zenith") -and (Test-Path "Dockerfile")) {
@@ -132,14 +220,26 @@ function Resolve-Workspace {
             if (Test-Path $dest) {
                 Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
             }
-            Write-Info "Cloning Zenith repository into $dest..."
-            $gitCmd = Get-Command "git" -ErrorAction SilentlyContinue
-            if ($gitCmd) {
-                git clone --depth 1 $RepoUrl $dest
-            } else {
-                Write-Err "Git is required to clone Zenith repository. Please install git or run from the Zenith directory."
+            New-Item -ItemType Directory -Force -Path $dest | Out-Null
+            $retrieved = $false
+            if (Ensure-GitInstalled) {
+                Write-Info "Cloning Zenith repository into $dest..."
+                try {
+                    git clone --depth 1 $RepoUrl $dest
+                    if (Test-Path (Join-Path $dest "run.py")) {
+                        $retrieved = $true
+                    }
+                } catch { }
+            }
+            if (-not $retrieved) {
+                Write-Info "Git clone unavailable or failed; retrieving Zenith repository archive directly..."
+                $retrieved = Retrieve-RepoArchive -Destination $dest
+            }
+            if ((-not $retrieved) -or (-not (Test-Path (Join-Path $dest "run.py")))) {
+                Write-Err "Failed to retrieve Zenith repository. Please install git or download Zenith manually."
                 exit 1
             }
+            Write-Ok "Zenith repository successfully acquired."
         }
         Set-Location $dest
         return $dest
@@ -201,12 +301,21 @@ function Start-NativeZenithEngine {
     $rootPy = Join-Path $rootVenv "Scripts\python.exe"
 
     if (-not (Test-Path $rootPy)) {
+        if (-not (Get-Command "python" -ErrorAction SilentlyContinue) -and -not (Get-Command "py" -ErrorAction SilentlyContinue)) {
+            Ensure-PythonInstalled | Out-Null
+        }
         Write-Info "Bootstrapping Python virtual environment in .venv..."
         try {
             & python -m venv $rootVenv
         } catch {
-            Write-Err "Failed to create Python virtual environment: $_"
-            exit 1
+            Write-Info "Retrying venv creation after ensuring Python packages..."
+            Ensure-PythonInstalled | Out-Null
+            try {
+                & python -m venv $rootVenv
+            } catch {
+                Write-Err "Failed to create Python virtual environment: $_"
+                exit 1
+            }
         }
     }
 
@@ -462,6 +571,13 @@ Write-Ok "$DockerVer active and responsive"
 
 # ── STAGE 3: INSTALLING MISSING DEPENDENCIES ──────────────────────────────────
 Write-StageHeader "[3/8] Installing missing dependencies..."
+
+if (-not (Get-Command "git" -ErrorAction SilentlyContinue)) {
+    Ensure-GitInstalled | Out-Null
+}
+if (-not (Get-Command "python" -ErrorAction SilentlyContinue) -and -not (Get-Command "py" -ErrorAction SilentlyContinue)) {
+    Ensure-PythonInstalled | Out-Null
+}
 
 $ComposeReady = $false
 try {

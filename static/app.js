@@ -3808,7 +3808,7 @@
         syncStream();
         break;
       case "tool_start":
-        if (m.delegated_agent && activeDelegationCard) {
+        if ((m.delegated_agent || m.run_id) && getDelegationCard(m)) {
           appendDelegationStep(m);
         } else {
           addToolChip(m.name, m.args);
@@ -3816,7 +3816,7 @@
         logTerminal(`call ${m.name} → ${JSON.stringify(m.args || {})}`, "tool");
         break;
       case "tool_result":
-        if (m.delegated_agent && activeDelegationCard) {
+        if ((m.delegated_agent || m.run_id) && getDelegationCard(m)) {
           updateDelegationStep(m);
         } else {
           addToolResult(m);
@@ -4067,16 +4067,30 @@
   }
 
   function finishTurn() {
-    if (turnStartTs === null) return;
-    const elapsed = Math.max(0, Date.now() - turnStartTs);
-    const s = (elapsed / 1000).toFixed(1);
-    const chips = $("msgs").querySelectorAll(".turn-chip");
-    const last = chips[chips.length - 1];
-    if (last) {
-      const dur = last.querySelector(".tl-dur");
-      if (dur) dur.textContent = `· ${s}s`;
+    if (turnStartTs !== null) {
+      const elapsed = Math.max(0, Date.now() - turnStartTs);
+      const s = (elapsed / 1000).toFixed(1);
+      const chips = $("msgs").querySelectorAll(".turn-chip");
+      const last = chips[chips.length - 1];
+      if (last) {
+        const dur = last.querySelector(".tl-dur");
+        if (dur) dur.textContent = `· ${s}s`;
+      }
+      turnStartTs = null;
     }
-    turnStartTs = null;
+
+    // Safety sweep: ensure NO delegation card or sub-agent tool remains stuck in running state
+    const runningCards = $("msgs") ? $("msgs").querySelectorAll(".delegation-card.running") : [];
+    runningCards.forEach(card => {
+      handleDelegationDone({
+        status: "done",
+        tool_calls: card._stepsCount || 0,
+        run_id: card._runId,
+        department: card._dept,
+      });
+    });
+    activeDelegationCards.clear();
+    activeDelegationCard = null;
   }
 
   function cancelTurn() {
@@ -4092,6 +4106,19 @@
     setGenerating(false);
     cancelTurn();
     pumpOutQueue();
+
+    // Mark any running delegation cards as failed
+    const runningCards = $("msgs") ? $("msgs").querySelectorAll(".delegation-card.running") : [];
+    runningCards.forEach(card => {
+      handleDelegationDone({
+        status: "fail",
+        result: msg || "Turn interrupted",
+        run_id: card._runId,
+        department: card._dept,
+      });
+    });
+    activeDelegationCards.clear();
+    activeDelegationCard = null;
   }
 
   /* ── tool chips ───────────────────────────────────────── */
@@ -4101,6 +4128,8 @@
     system: "◇", commute: "⌖", maps: "⌖", homeassistant: "◒", research: "⌕",
     web: "⌕", browser: "◫", delegate: "⚡", coding: "💻", code: "💻",
     hr: "👥", hire: "👥", creative: "🎨", pptx: "📊", operations: "⚙", docker: "🐳",
+    media: "🎬", tts: "🎙️", speech: "🎙️", audio: "🎵", video: "🎥",
+    collage: "🖼️", meme: "🎭", palette: "🎨", gif: "🎞️", trim: "✂️", compress: "🗜️",
   };
   function toolIconFor(name) {
     const n = (name || "").toLowerCase();
@@ -4128,9 +4157,11 @@
     operations: "⚙️",
     productivity: "🗓️",
     creative: "🎨",
+    media: "🎬",
     utility: "🔌",
   };
 
+  const activeDelegationCards = new Map();
   let activeDelegationCard = null;
 
   function createDelegationCard(dept, task, agentName, runId) {
@@ -4140,7 +4171,10 @@
     const card = document.createElement("div");
     card.className = "delegation-card running";
     card.id = `delegation-${runId || dept || Date.now()}`;
+    card.setAttribute("data-dept", dept || "");
+    if (runId) card.setAttribute("data-run-id", runId);
     card._dept = dept;
+    card._runId = runId || "";
     card._stepsCount = 0;
 
     card.innerHTML = `
@@ -4166,32 +4200,111 @@
 
     $("msgs").appendChild(card);
     activeDelegationCard = card;
+    if (runId) activeDelegationCards.set(runId, card);
+    if (dept) activeDelegationCards.set(dept, card);
     scroll();
     return card;
   }
 
+  function getDelegationCard(m) {
+    if (!m) return activeDelegationCard;
+    if (m.run_id && activeDelegationCards.has(m.run_id)) {
+      return activeDelegationCards.get(m.run_id);
+    }
+    if (m.delegated_agent && activeDelegationCards.has(m.delegated_agent)) {
+      return activeDelegationCards.get(m.delegated_agent);
+    }
+    if (m.department && activeDelegationCards.has(m.department)) {
+      return activeDelegationCards.get(m.department);
+    }
+    // Search DOM by run_id
+    if (m.run_id) {
+      const el = document.getElementById(`delegation-${m.run_id}`) || document.querySelector(`[data-run-id="${m.run_id}"]`);
+      if (el) return el;
+    }
+    // Search DOM by department / delegated_agent
+    const d = m.delegated_agent || m.department;
+    if (d) {
+      const el = document.querySelector(`.delegation-card.running[data-dept="${d}"]`);
+      if (el) return el;
+      const allRunning = document.querySelectorAll(".delegation-card.running");
+      for (const c of allRunning) {
+        if (c._dept === d) return c;
+      }
+    }
+    if (activeDelegationCard && activeDelegationCard.classList.contains("running")) {
+      return activeDelegationCard;
+    }
+    return document.querySelector(".delegation-card.running") || activeDelegationCard;
+  }
+
   function handleDelegationStart(m) {
-    if (!activeDelegationCard || activeDelegationCard._dept !== m.department) {
-      createDelegationCard(m.department, m.task, m.agent_name, m.run_id);
+    let card = null;
+    if (m.run_id && activeDelegationCards.has(m.run_id)) {
+      card = activeDelegationCards.get(m.run_id);
+    } else if (m.department && activeDelegationCards.has(m.department)) {
+      const cand = activeDelegationCards.get(m.department);
+      if (cand && cand.classList.contains("running") && (!cand._runId || cand._runId === m.run_id)) {
+        card = cand;
+      }
+    } else if (activeDelegationCard && activeDelegationCard.classList.contains("running") && (!activeDelegationCard._runId || activeDelegationCard._runId === m.run_id) && (!activeDelegationCard._dept || activeDelegationCard._dept === m.department)) {
+      card = activeDelegationCard;
+    } else if (m.department) {
+      const runningDom = document.querySelector(`.delegation-card.running[data-dept="${m.department}"]`);
+      if (runningDom && (!runningDom._runId || runningDom._runId === m.run_id)) {
+        card = runningDom;
+      }
+    }
+
+    if (!card) {
+      card = createDelegationCard(m.department, m.task, m.agent_name, m.run_id);
     } else {
-      if (m.agent_name) {
-        const titleEl = activeDelegationCard.querySelector(".delegation-title");
-        if (titleEl) titleEl.innerHTML = `${esc(m.agent_name)} <span class="delegation-badge">${esc(m.department)}</span>`;
+      if (m.run_id) {
+        card._runId = m.run_id;
+        card.id = `delegation-${m.run_id}`;
+        card.setAttribute("data-run-id", m.run_id);
+        activeDelegationCards.set(m.run_id, card);
+      }
+      if (m.department) {
+        card._dept = m.department;
+        card.setAttribute("data-dept", m.department);
+        activeDelegationCards.set(m.department, card);
+      }
+      activeDelegationCard = card;
+
+      if (m.agent_name || m.department) {
+        const titleEl = card.querySelector(".delegation-title");
+        if (titleEl) {
+          const dName = m.agent_name || (m.department ? (m.department.charAt(0).toUpperCase() + m.department.slice(1) + " Specialist") : "Departmental Specialist");
+          titleEl.innerHTML = `${esc(dName)} <span class="delegation-badge">${esc(m.department || 'autonomous')}</span>`;
+        }
+        const iconEl = card.querySelector(".delegation-icon");
+        if (iconEl && m.department && DEPT_ICONS[m.department]) {
+          iconEl.textContent = DEPT_ICONS[m.department];
+        }
       }
       if (m.task) {
-        const taskEl = activeDelegationCard.querySelector(".delegation-task");
+        const taskEl = card.querySelector(".delegation-task");
         if (taskEl) taskEl.innerHTML = `<strong>Mission:</strong> ${renderMD(m.task)}`;
       }
+      const statusEl = card.querySelector(".delegation-status");
+      if (statusEl) {
+        statusEl.className = "delegation-status running";
+        statusEl.textContent = "Working...";
+      }
+      card.classList.add("running");
+      card.classList.remove("done", "fail");
     }
   }
 
   function appendDelegationStep(m) {
-    if (!activeDelegationCard) return;
-    const stepsBox = activeDelegationCard.querySelector(".delegation-steps");
+    const card = getDelegationCard(m);
+    if (!card) return;
+    const stepsBox = card.querySelector(".delegation-steps");
     if (!stepsBox) return;
     stepsBox.style.display = "flex";
 
-    activeDelegationCard._stepsCount = (activeDelegationCard._stepsCount || 0) + 1;
+    card._stepsCount = (card._stepsCount || 0) + 1;
     const stepRow = document.createElement("div");
     stepRow.className = "delegation-step-row";
     stepRow.id = `step-${m.name}-${Date.now()}`;
@@ -4218,8 +4331,9 @@
   }
 
   function updateDelegationStep(m) {
-    if (!activeDelegationCard) return;
-    const stepsBox = activeDelegationCard.querySelector(".delegation-steps");
+    const card = getDelegationCard(m);
+    if (!card) return;
+    const stepsBox = card.querySelector(".delegation-steps");
     if (!stepsBox) return;
 
     const rows = stepsBox.querySelectorAll(".delegation-step-row");
@@ -4231,6 +4345,8 @@
           tag.className = "tl-tag " + (m.ok ? "ok" : "fail");
           tag.textContent = m.ok ? "done" : "fail";
         }
+        const mark = rows[i].querySelector(".tl-mark");
+        if (mark) mark.classList.remove("running");
         break;
       }
     }
@@ -4238,41 +4354,85 @@
   }
 
   function handleDelegationDone(m) {
-    if (!activeDelegationCard) return;
-    const statusEl = activeDelegationCard.querySelector(".delegation-status");
+    const card = getDelegationCard(m);
+    if (!card) return;
+    const isOk = m.status === "done" || m.ok === true || m.status === "completed" || m.status === "success";
+    const statusEl = card.querySelector(".delegation-status");
     if (statusEl) {
-      statusEl.className = "delegation-status " + (m.status === "done" ? "done" : "fail");
-      statusEl.textContent = m.status === "done"
-        ? `✓ Completed (${m.tool_calls || activeDelegationCard._stepsCount || 0} tools)`
-        : `✗ Issue (${m.status})`;
+      statusEl.className = "delegation-status " + (isOk ? "done" : "fail");
+      statusEl.textContent = isOk
+        ? `✓ Completed (${m.tool_calls || card._stepsCount || 0} tools)`
+        : `✗ Issue (${m.status || "failed"})`;
     }
-    activeDelegationCard.classList.remove("running");
-    activeDelegationCard.classList.add(m.status === "done" ? "done" : "fail");
+    card.classList.remove("running");
+    card.classList.add(isOk ? "done" : "fail");
 
-    if (m.result && !activeDelegationCard.querySelector(".delegation-result-snippet")) {
-      const body = activeDelegationCard.querySelector(".delegation-body");
+    // Close any lingering running step tags inside the card
+    const stepsBox = card.querySelector(".delegation-steps");
+    if (stepsBox) {
+      stepsBox.querySelectorAll(".tl-tag.run").forEach(tag => {
+        tag.className = "tl-tag " + (isOk ? "ok" : "fail");
+        tag.textContent = isOk ? "done" : "fail";
+      });
+      stepsBox.querySelectorAll(".tl-mark.running").forEach(mark => {
+        mark.classList.remove("running");
+      });
+    }
+
+    if (m.result && !card.querySelector(".delegation-result-snippet")) {
+      const body = card.querySelector(".delegation-body");
       if (body) {
         const snippet = document.createElement("div");
         snippet.className = "delegation-result-snippet";
-        snippet.textContent = m.result;
+        snippet.textContent = String(m.result).slice(0, 600);
         body.appendChild(snippet);
       }
     }
 
-    activeDelegationCard = null;
+    if (m.run_id) activeDelegationCards.delete(m.run_id);
+    if (card._runId) activeDelegationCards.delete(card._runId);
+    if (m.department && activeDelegationCards.get(m.department) === card) activeDelegationCards.delete(m.department);
+    if (card._dept && activeDelegationCards.get(card._dept) === card) activeDelegationCards.delete(card._dept);
+    if (activeDelegationCard === card) {
+      const nextRunning = document.querySelector(".delegation-card.running");
+      activeDelegationCard = nextRunning || null;
+    }
     scroll();
   }
 
   function addToolChip(name, args) {
-    if (name === "delegate_task") {
+    if (name === "delegate_task" || name === "ask_specialist") {
       let dDept = "";
       let dTask = "";
       try {
         const parsed = typeof args === "string" ? JSON.parse(args) : args;
-        dDept = parsed.department || parsed.name || "";
-        dTask = parsed.task || parsed.mission || "";
+        dDept = (parsed.department || parsed.name || "").trim().toLowerCase();
+        dTask = parsed.task || parsed.mission || parsed.question || "";
       } catch {}
+      if (dDept && activeDelegationCards.has(dDept)) {
+        const existing = activeDelegationCards.get(dDept);
+        if (existing && existing.classList.contains("running")) {
+          return;
+        }
+      }
       createDelegationCard(dDept, dTask);
+      return;
+    }
+    if (name === "delegate_parallel") {
+      let tasks = [];
+      try {
+        const parsed = typeof args === "string" ? JSON.parse(args) : args;
+        tasks = parsed.tasks || [];
+      } catch {}
+      tasks.forEach(t => {
+        const d = (t.department || t.name || "").trim().toLowerCase();
+        const taskText = t.task || t.mission || "";
+        if (d && activeDelegationCards.has(d)) {
+          const existing = activeDelegationCards.get(d);
+          if (existing && existing.classList.contains("running")) return;
+        }
+        createDelegationCard(d, taskText);
+      });
       return;
     }
 
@@ -4325,11 +4485,21 @@
   }
 
   function addToolResult(m) {
-    if (m.name === "delegate_task" && activeDelegationCard) {
-      handleDelegationDone({
-        status: m.ok ? "done" : "fail",
-        result: m.result || m.content || "",
-      });
+    if (m.name === "delegate_task" || m.name === "delegate_parallel" || m.name === "ask_specialist") {
+      const isOk = m.ok !== false;
+      const resText = m.result || m.content || "";
+      const runningCards = document.querySelectorAll(".delegation-card.running");
+      if (runningCards.length > 0) {
+        runningCards.forEach(card => {
+          handleDelegationDone({
+            status: isOk ? "done" : "fail",
+            result: resText,
+            tool_calls: card._stepsCount || 0,
+            run_id: card._runId,
+            department: card._dept,
+          });
+        });
+      }
       return;
     }
 
@@ -5207,8 +5377,10 @@
           operations: "⚙️",
           productivity: "🗓️",
           creative: "🎨",
+          media: "🎬",
           utility: "🔌",
         };
+
 
         deptsList.innerHTML = builtins.map(d => {
           const icon = deptIcons[d.id] || "🤖";
@@ -5220,9 +5392,14 @@
                 <span class="dept-card-badge">${tools.length} capabilities</span>
               </div>
               <div class="dept-card-desc">${esc(d.description)}</div>
-              <button type="button" class="dept-tools-toggle" data-target="tools-${esc(d.id)}">
-                ▸ View allocated tools (${tools.length})
-              </button>
+              <div class="dept-actions">
+                <button type="button" class="dept-tools-toggle" data-target="tools-${esc(d.id)}">
+                  ▸ View allocated tools (${tools.length})
+                </button>
+                <button type="button" class="ctx-mini-btn dept-dispatch-btn" data-dept="${esc(d.id)}" data-name="${esc(d.name)}">
+                  ⚡ Dispatch
+                </button>
+              </div>
               <div class="dept-tools-list" id="tools-${esc(d.id)}" style="display:none">
                 ${tools.map(t => `<span class="tool-pill">${esc(t)}</span>`).join("")}
               </div>
@@ -5237,6 +5414,22 @@
               const isClosed = listEl.style.display === "none";
               listEl.style.display = isClosed ? "flex" : "none";
               btn.textContent = (isClosed ? "▾ Hide allocated tools" : "▸ View allocated tools") + ` (${listEl.children.length})`;
+            }
+          });
+        });
+
+        deptsList.querySelectorAll(".dept-dispatch-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const dept = btn.dataset.dept;
+            const name = btn.dataset.name || dept;
+            const task = prompt(`Assign a mission to ${name} (${dept}):`);
+            if (task && task.trim()) {
+              const msgInput = $("msg");
+              if (msgInput) {
+                msgInput.value = `Delegate to ${dept}: ${task.trim()}`;
+                msgInput.focus();
+                if (window.toggleContextDrawer) window.toggleContextDrawer();
+              }
             }
           });
         });
@@ -5308,6 +5501,30 @@
             `).join("");
           }
         }
+
+        const bbFeed = $("ctx-blackboard-feed");
+        if (bbFeed) {
+          try {
+            const bbRes = await fetch("/api/agents/blackboard?limit=8");
+            const bbData = await bbRes.json();
+            const findings = bbData.findings || [];
+            if (findings.length === 0) {
+              bbFeed.innerHTML = `<div class="placeholder" style="font-size: 0.76rem; color: var(--ink-dim); padding: 8px 0;">No shared blackboard updates yet.</div>`;
+            } else {
+              bbFeed.innerHTML = findings.map(f => `
+                <div class="blackboard-item">
+                  <div class="blackboard-meta">
+                    <span class="blackboard-topic">${esc(f.department)} · ${esc(f.topic)}</span>
+                    <span class="blackboard-time">${esc(f.created_at || '')}</span>
+                  </div>
+                  <div class="blackboard-content">${esc(f.content)}</div>
+                </div>
+              `).join("");
+            }
+          } catch (err) {
+            console.error("Failed to load blackboard feed:", err);
+          }
+        }
       } catch (err) {
         console.error("Failed to load organization roster:", err);
       }
@@ -5322,8 +5539,10 @@
       const filterInput = $("forge-tools-filter");
       const picker = $("forge-tools-picker");
       const refreshBtn = $("ctx-roster-refresh-btn");
+      const bbRefreshBtn = $("ctx-bb-refresh-btn");
 
       if (refreshBtn) refreshBtn.addEventListener("click", () => loadAgentsPane());
+      if (bbRefreshBtn) bbRefreshBtn.addEventListener("click", () => loadAgentsPane());
 
       const toggleForge = (show) => {
         if (!forgeCard) return;

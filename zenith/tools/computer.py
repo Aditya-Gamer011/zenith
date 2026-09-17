@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.config import settings
+from ..core.sandbox import sandbox
 
 MAX_READ = 20_000
 MAX_WRITE = 40_000
@@ -80,7 +81,8 @@ def _unsafe(command: str) -> bool:
     for frag in FORBIDDEN:
         if frag in low:
             return True
-    return False
+    safe, _ = sandbox.is_command_safe(command)
+    return not safe
 
 
 def get_active_cwd() -> Path:
@@ -332,6 +334,8 @@ async def run_shell(
 
         out = out_bytes.decode(errors="replace").replace("\r\n", "\n").strip()
         err = err_bytes.decode(errors="replace").replace("\r\n", "\n").strip()
+        out = sandbox.redact_secrets(out)
+        err = sandbox.redact_secrets(err)
         code = proc.returncode if proc.returncode is not None else 0
 
         # Handle output truncation cleanly
@@ -425,8 +429,8 @@ async def run_shell(
         )
 
 
-async def read_file(path: str) -> str:
-    """Read a text file (supports absolute or cwd-relative paths)."""
+async def read_file(path: str, raw: bool = False) -> str:
+    """Read a text file (supports absolute or cwd-relative paths). Wrapped in untrusted_content tags for injection safety unless raw=True."""
     try:
         p = Path(path).expanduser()
         if not p.is_absolute():
@@ -434,11 +438,22 @@ async def read_file(path: str) -> str:
         else:
             p = p.resolve()
 
+        # Sovereign Sandbox protection
+        blocked, reason = sandbox.is_path_protected(p, operation="read")
+        if blocked:
+            return f"[sandbox violation] Access to protected path is blocked: {reason}"
+        sym_safe, sym_reason = sandbox.is_symlink_safe(p)
+        if not sym_safe:
+            return f"[sandbox violation] {sym_reason}"
+
         if not p.is_file():
             return f"[error] Not a file: {path} (resolved: {p})"
         text = p.read_text(errors="replace")
         if len(text) > MAX_READ:
             text = text[:MAX_READ] + f"\n... [truncated, file is {p.stat().st_size} bytes]"
+        if not raw:
+            from .swe_engine import wrap_untrusted_content
+            return wrap_untrusted_content(text, source=p.name)
         return text
     except Exception as exc:
         return f"[error] {exc}"
@@ -452,6 +467,14 @@ async def write_file(path: str, content: str) -> str:
             p = (get_active_cwd() / p).resolve()
         else:
             p = p.resolve()
+
+        # Sovereign Sandbox protection
+        blocked, reason = sandbox.is_path_protected(p, operation="write")
+        if blocked:
+            return f"[sandbox violation] Write to protected path is blocked: {reason}"
+        sym_safe, sym_reason = sandbox.is_symlink_safe(p)
+        if not sym_safe:
+            return f"[sandbox violation] {sym_reason}"
 
         if len(content) > MAX_WRITE:
             content = content[:MAX_WRITE]

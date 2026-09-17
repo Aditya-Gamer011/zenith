@@ -139,6 +139,15 @@ CREATE TABLE IF NOT EXISTS custom_agents (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS org_blackboard (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    department TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -413,3 +422,73 @@ def delete_custom_agent(agent_id: str) -> bool:
         cur = conn.execute("DELETE FROM custom_agents WHERE id = ?", (agent_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ─── Organizational Shared Blackboard ─────────────────────────────────────────
+
+def blackboard_publish(
+    department: str,
+    topic: str,
+    content: str,
+    metadata: dict[str, Any] | None = None,
+) -> int:
+    """Publish a strategic insight, finding, or status report to the organizational blackboard."""
+    meta_json = json.dumps(metadata or {}, ensure_ascii=False)
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO org_blackboard (department, topic, content, metadata)
+            VALUES (?, ?, ?, ?)
+            """,
+            (department.strip(), topic.strip(), content.strip(), meta_json),
+        )
+        conn.commit()
+        return cur.lastrowid or 0
+
+
+def blackboard_query(
+    query: str = "",
+    department: str = "",
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Query recent findings from the shared organizational blackboard."""
+    sql = "SELECT * FROM org_blackboard"
+    params: list[Any] = []
+    clauses: list[str] = []
+
+    if department.strip():
+        clauses.append("LOWER(department) = ?")
+        params.append(department.strip().lower())
+    if query.strip():
+        clauses.append("(LOWER(topic) LIKE ? OR LOWER(content) LIKE ?)")
+        q = f"%{query.strip().lower()}%"
+        params.extend([q, q])
+
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(max(1, min(limit, 50)))
+
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["metadata"] = json.loads(d.get("metadata") or "{}")
+            except Exception:
+                d["metadata"] = {}
+            out.append(d)
+        return out
+
+
+def blackboard_summary(limit: int = 5) -> str:
+    """Format recent organizational blackboard findings for context injection."""
+    findings = blackboard_query(limit=limit)
+    if not findings:
+        return ""
+    lines = []
+    for f in findings:
+        lines.append(f"- [{f.get('created_at', '')}] **{f.get('department', 'Agent')}** ({f.get('topic', '')}): {f.get('content', '')}")
+    return "\n".join(lines)

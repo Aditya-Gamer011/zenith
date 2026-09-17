@@ -6,6 +6,7 @@ and retire custom agents with SQLite persistence.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -46,15 +47,131 @@ async def delegate_task(
         res = await svc.execute_task(dept, task, context=context, emit=emit)
         if not res.get("ok"):
             err = res.get("error", "Task execution failed.")
-            return f"Agent '{dept}' encountered an issue: {err}"
+            return (
+                f"### ⚠️ Specialist Report: {dept.title()}\n"
+                f"- **Status**: ❌ Execution Issue\n"
+                f"- **Error Details**: {err}\n"
+                f"💡 *Zenith can reformulate the mission or assign an alternative department.*"
+            )
         
         agent_name = res.get("agent", dept)
         tool_calls = res.get("tool_calls", 0)
         output = res.get("result", "").strip()
-        return f"[{agent_name} Report ({tool_calls} tool steps)]\n{output}"
+        return (
+            f"### 📋 [{agent_name} Report ({tool_calls} tool steps)]\n"
+            f"- **Department**: `{dept}` | **Status**: ✅ Completed Successfully\n\n"
+            f"{output}"
+        )
     else:
         run_id = await svc.start(dept, task, context=context, emit=emit)
         return f"Delegated task to '{dept}' in background (Run ID: #{run_id}). You can check status with get_agent_status."
+
+
+async def delegate_parallel(
+    tasks: list[dict[str, Any]] | str,
+    context: str = "",
+    emit: Any = None,
+) -> str:
+    """Delegate multiple domain tasks to departmental specialist agents simultaneously in parallel."""
+    svc = _get_service()
+    if isinstance(tasks, str):
+        try:
+            tasks = json.loads(tasks)
+        except Exception:
+            return "Error: 'tasks' parameter must be a list of task objects (e.g. [{'department': 'communication', 'task': '...'}, ...])."
+    if not isinstance(tasks, list) or not tasks:
+        return "Error: 'tasks' must be a non-empty list of task assignments."
+
+    async def _run_item(item: dict[str, Any]) -> str:
+        dept = (item.get("department") or "").strip().lower()
+        t = (item.get("task") or "").strip()
+        c = item.get("context", "") or context
+        if not dept or not t:
+            return f"- ⚠️ Invalid task assignment: {item}"
+        res = await svc.execute_task(dept, t, context=c, emit=emit)
+        agent_name = res.get("agent", dept)
+        calls = res.get("tool_calls", 0)
+        out = (res.get("result") or res.get("error") or "No output").strip()
+        status_tag = "✓ Completed" if res.get("ok") else "⚠ Failed"
+        return (
+            f"### [{agent_name} — {status_tag} ({calls} tool steps)]\n"
+            f"- **Mission Goal**: *{t}*\n\n"
+            f"{out}"
+        )
+
+    results = await asyncio.gather(*(_run_item(t) for t in tasks))
+    return (
+        f"## 🌐 Organization Parallel Mission Summary ({len(tasks)} Specialists Deployed):\n\n"
+        + "\n\n---\n\n".join(results)
+        + "\n\n---\n*Strategic findings have been synchronized and recorded to the organizational blackboard.*"
+    )
+
+
+async def ask_specialist(
+    department: str,
+    question: str,
+    context: str = "",
+    emit: Any = None,
+) -> str:
+    """Consult another departmental specialist agent for peer assistance or domain expertise."""
+    from ..agents.agent_service import current_agent_depth, current_agent_name
+    svc = _get_service()
+    dept = (department or "").strip().lower()
+    if not dept:
+        return f"Please specify a department to consult. Available: {', '.join(sorted(DEPARTMENTS.keys()))}"
+    if not question:
+        return "Please specify a question or query for the specialist."
+
+    caller_depth = current_agent_depth.get()
+    caller_name = current_agent_name.get()
+    if caller_depth >= 2:
+        return f"Peer consultation limit reached (depth {caller_depth} >= 2). Please proceed with your own toolset."
+
+    peer_context = f"Consultation requested by peer agent '{caller_name or 'Specialist'}'."
+    if context:
+        peer_context += f"\nContext: {context}"
+
+    res = await svc.execute_task(dept, question, context=peer_context, emit=emit, depth=caller_depth + 1)
+    if not res.get("ok"):
+        return f"Specialist '{dept}' returned an error: {res.get('error', 'Execution failed')}"
+    return (
+        f"### 🤝 [{res.get('agent', dept)} Consultation Response]:\n"
+        f"- **Department**: `{dept}` | **Status**: ✅ Success\n\n"
+        f"{res.get('result', '').strip()}"
+    )
+
+
+
+async def share_finding(
+    topic: str,
+    content: str,
+    department: str = "",
+) -> str:
+    """Publish a strategic finding, discovered intelligence, or status report to the organizational blackboard."""
+    from ..agents.agent_service import current_agent_name
+    from ..memory import store
+    dept = department or current_agent_name.get() or "Executive"
+    if not topic or not content:
+        return "Both 'topic' and 'content' are required to publish a finding."
+    row_id = store.blackboard_publish(department=dept, topic=topic, content=content)
+    return f"✓ Finding published to organizational blackboard (ID #{row_id}) under '{topic}' by {dept}."
+
+
+async def query_findings(
+    query: str = "",
+    department: str = "",
+    limit: int = 5,
+) -> str:
+    """Query recent findings from the shared organizational blackboard."""
+    from ..memory import store
+    findings = store.blackboard_query(query=query, department=department, limit=limit)
+    if not findings:
+        return f"No findings found on the blackboard matching '{query}'."
+    lines = [f"### Organizational Blackboard ({len(findings)} findings):"]
+    for f in findings:
+        lines.append(f"- **#{f['id']} [{f.get('department', 'Agent')}] {f.get('topic', '')}** ({f.get('created_at', '')}):\n  {f.get('content', '')}")
+    return "\n\n".join(lines)
+
 
 
 

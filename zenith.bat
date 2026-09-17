@@ -22,9 +22,16 @@ if exist "%~dp0zenith-install.ps1" (
 ) else if exist "%USERPROFILE%\.zenith\app\zenith-install.ps1" (
     set "SCRIPT_PATH=%USERPROFILE%\.zenith\app\zenith-install.ps1"
 ) else (
-    echo [Zenith Error] Could not locate zenith-install.ps1.
-    pause
-    exit /b 1
+    echo [Zenith] Standalone launcher: Zenith installer not found locally.
+    if not exist "%USERPROFILE%\.zenith\app" mkdir "%USERPROFILE%\.zenith\app"
+    set "SCRIPT_PATH=%USERPROFILE%\.zenith\app\zenith-install.ps1"
+    echo [Zenith] Downloading Zenith installer from GitHub...
+    "%PS_CMD%" -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13; (New-Object Net.WebClient).DownloadFile('https://raw.githubusercontent.com/Aditya-Gamer011/zenith/main/zenith-install.ps1', '!SCRIPT_PATH!')"
+    if not exist "!SCRIPT_PATH!" (
+        echo [Zenith Error] Failed to download zenith-install.ps1. Please check your internet connection.
+        pause
+        exit /b 1
+    )
 )
 
 "%PS_CMD%" -NoProfile -ExecutionPolicy Bypass -File "!SCRIPT_PATH!" %*

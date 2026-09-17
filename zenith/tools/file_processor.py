@@ -241,16 +241,42 @@ async def analyze_file(file_path: str) -> str:
             return f"[file analyze error]: {exc}"
 
 
-async def modify_file(file_path: str, new_content: str, output_filename: str = "") -> str:
-    """Modify or re-export an existing file with new content or changes."""
+async def modify_file(file_path: str, new_content: str, output_filename: str = "", in_place: bool = False) -> str:
+    """Modify or re-export an existing file with new content or changes.
+
+    If in_place=True (or if the file is a project/workspace file and no output_filename is provided),
+    the file is modified directly in place with syntax validation and rollback backup.
+    Otherwise, a modified copy is exported to the temporary uploads/downloads staging area.
+    """
     p = Path(file_path).expanduser()
     if not p.is_file():
-        if (_UPLOADS_DIR / p.name).is_file():
+        # Check relative to workspace or uploads or tmp
+        ws_candidate = (settings.workspace_dir / p).resolve() if settings.workspace_dir.exists() else None
+        if ws_candidate and ws_candidate.is_file():
+            p = ws_candidate
+        elif (_UPLOADS_DIR / p.name).is_file():
             p = _UPLOADS_DIR / p.name
         elif (_TMP_DIR / p.name).is_file():
             p = _TMP_DIR / p.name
         else:
             return f"[modify_file] File not found: {file_path}"
+
+    # Determine if in-place modification should be performed
+    is_in_place = in_place or (not output_filename and not str(p).startswith(str(_TMP_DIR)) and not str(p).startswith(str(_UPLOADS_DIR)))
+
+    if is_in_place:
+        from .swe_engine import _validate_syntax, _create_checkpoint
+        valid, err = _validate_syntax(p, new_content)
+        if not valid:
+            return f"❌ [modify_file] Syntax validation failed: {err}"
+
+        ws = settings.workspace_dir if settings.workspace_dir.exists() else Path.cwd()
+        chk_id = _create_checkpoint(p, p.read_text(encoding="utf-8", errors="replace"), ws)
+        try:
+            p.write_text(new_content, encoding="utf-8")
+            return f"✅ File modified in-place: `{p}` ({p.stat().st_size} bytes, checkpoint: `{chk_id}`)"
+        except Exception as exc:
+            return f"[modify_file error]: {exc}"
 
     out_name = output_filename or f"modified_{p.name}"
     out_path = _TMP_DIR / out_name
@@ -260,3 +286,4 @@ async def modify_file(file_path: str, new_content: str, output_filename: str = "
         return f"✅ File modified & saved: `{out_path}` ({out_path.stat().st_size} bytes)"
     except Exception as exc:
         return f"[modify_file error]: {exc}"
+

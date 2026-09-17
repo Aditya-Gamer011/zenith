@@ -197,7 +197,10 @@ async def list_tasks():
 
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: str):
-    return agy.get_status(task_id)
+    try:
+        return agy.get_status(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="task not found")
 
 
 @app.get("/tasks/{task_id}/output")

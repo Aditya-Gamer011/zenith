@@ -98,6 +98,9 @@ def catalog() -> list[dict[str, Any]]:
 
 EXECUTIVE_TOOL_NAMES = [
     "delegate_task",
+    "delegate_parallel",
+    "share_finding",
+    "query_findings",
     "list_agents",
     "get_agent_status",
     "update_user_profile",
@@ -109,6 +112,8 @@ EXECUTIVE_TOOL_NAMES = [
     "get_setup_status",
     "zenith_docs",
 ]
+
+
 
 
 def executive_catalog() -> list[dict[str, Any]]:
@@ -192,7 +197,7 @@ async def call_tool(
                     "error": "Action cancelled — user didn't approve it."}
 
     try:
-        if name == "delegate_task" and emit is not None:
+        if name in ("delegate_task", "delegate_parallel", "ask_specialist") and emit is not None:
             result = await tool["handler"](**validated, emit=emit)
         else:
             result = await tool["handler"](**validated)
@@ -355,6 +360,190 @@ async def tool_list_dir(path: str) -> str:
     return await list_dir(path)
 
 
+# ── SWE Coding Engine Handlers ───────────────────────────────────────────────
+async def tool_repo_map(repo_path: str = "", max_depth: int = 4, max_tokens: int = 3500) -> str:
+    from zenith.tools.swe_engine import repo_map
+    return await repo_map(repo_path, max_depth, max_tokens)
+
+
+async def tool_find_symbol(symbol_name: str, repo_path: str = "", exact: bool = False) -> str:
+    from zenith.tools.swe_engine import find_symbol
+    return await find_symbol(symbol_name, repo_path, exact)
+
+
+async def tool_apply_patch(path: str, target_chunk: str = "", replacement_chunk: str = "", patch_diff: str = "", repo_path: str = "") -> str:
+    from zenith.tools.swe_engine import apply_patch
+    return await apply_patch(path, target_chunk, replacement_chunk, patch_diff, repo_path)
+
+
+async def tool_rollback_patch(checkpoint_id: str = "", file_path: str = "", repo_path: str = "") -> str:
+    from zenith.tools.swe_engine import rollback_patch
+    return await rollback_patch(checkpoint_id, file_path, repo_path)
+
+
+async def tool_run_tests(test_target: str = "", test_framework: str = "auto", repo_path: str = "", custom_command: str = "", timeout: int = 120) -> str:
+    from zenith.tools.swe_engine import run_tests
+    return await run_tests(test_target, test_framework, repo_path, custom_command, timeout)
+
+
+async def tool_inspect_diff(repo_path: str = "", staged_only: bool = False, file_path: str = "") -> str:
+    from zenith.tools.swe_engine import inspect_diff
+    return await inspect_diff(repo_path, staged_only, file_path)
+
+
+async def tool_swe_status() -> str:
+    from zenith.tools.swe_engine import swe_status
+    return await swe_status()
+
+
+async def tool_find_references(symbol_name: str, repo_path: str = "", max_results: int = 50) -> str:
+    from zenith.tools.swe_engine import find_references
+    return await find_references(symbol_name, repo_path, max_results)
+
+
+async def tool_apply_patch_transaction(patches: list[dict], repo_path: str = "") -> str:
+    from zenith.tools.swe_engine import apply_patch_transaction
+    return await apply_patch_transaction(patches, repo_path)
+
+
+async def tool_lint_code(file_path: str, repo_path: str = "") -> str:
+    from zenith.tools.swe_engine import lint_code
+    return await lint_code(file_path, repo_path)
+
+
+async def tool_analyze_dependency_graph(target: str = "", repo_path: str = "") -> str:
+    from zenith.tools.repo_intelligence import analyze_dependency_graph
+    return await analyze_dependency_graph(target, repo_path)
+
+
+async def tool_call_graph(function_name: str, repo_path: str = "", direction: str = "incoming", max_depth: int = 4) -> str:
+    from zenith.tools.repo_intelligence import call_graph
+    return await call_graph(function_name, repo_path, direction, max_depth)
+
+
+async def tool_map_tests(target: str, repo_path: str = "") -> str:
+    from zenith.tools.repo_intelligence import map_tests
+    return await map_tests(target, repo_path)
+
+
+async def tool_semantic_code_search(query: str, repo_path: str = "", max_results: int = 8) -> str:
+    from zenith.tools.repo_intelligence import semantic_code_search
+    return await semantic_code_search(query, repo_path, max_results)
+
+
+async def tool_analyze_architecture(repo_path: str = "") -> str:
+    from zenith.tools.repo_intelligence import analyze_architecture
+    return await analyze_architecture(repo_path)
+
+
+async def tool_get_hierarchical_context(task_query: str, subsystem: str = "", depth: str = "auto", repo_path: str = "") -> str:
+    from zenith.tools.repo_intelligence import get_hierarchical_context
+    return await get_hierarchical_context(task_query, subsystem, depth, repo_path)
+
+
+# ── Media Studio & Audio/Video Engineering Handlers ──────────────────────────
+async def tool_media_info(file_path: str) -> str:
+    from zenith.tools.media_studio import media_info
+    return await media_info(file_path)
+
+
+async def tool_convert_media(input_path: str, output_format: str = "mp3", quality: str = "high", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import convert_media
+    return await convert_media(input_path, output_format, quality, output_filename)
+
+
+async def tool_trim_media(input_path: str, start_time: str, duration: str = "", end_time: str = "", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import trim_media
+    return await trim_media(input_path, start_time, duration, end_time, output_filename)
+
+
+async def tool_extract_frames(video_path: str, timestamp: str = "00:00:01", count: int = 1, output_format: str = "jpg") -> str:
+    from zenith.tools.media_studio import extract_frames
+    return await extract_frames(video_path, timestamp, count, output_format)
+
+
+async def tool_merge_audio_video(video_path: str, audio_path: str, output_filename: str = "", replace_audio: bool = True) -> str:
+    from zenith.tools.media_studio import merge_audio_video
+    return await merge_audio_video(video_path, audio_path, output_filename, replace_audio)
+
+
+async def tool_compress_media(input_path: str, target_size_mb: float = 10.0, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import compress_media
+    return await compress_media(input_path, target_size_mb, output_filename)
+
+
+async def tool_text_to_speech(text: str, voice: str = "en-US-JennyNeural", speed: str = "+0%", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import text_to_speech
+    return await text_to_speech(text, voice, speed, output_filename)
+
+
+async def tool_download_web_audio(url: str, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import download_web_audio
+    return await download_web_audio(url, output_filename)
+
+
+async def tool_download_web_video(url: str, max_resolution: str = "1080", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import download_web_video
+    return await download_web_video(url, max_resolution, output_filename)
+
+
+async def tool_web_media_info(url: str) -> str:
+    from zenith.tools.media_studio import web_media_info
+    return await web_media_info(url)
+
+
+async def tool_create_collage(image_paths: list[str], layout: str = "auto", spacing: int = 12, bg_color: str = "#181825", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import create_collage
+    return await create_collage(image_paths, layout, spacing, bg_color, output_filename)
+
+
+async def tool_generate_meme(image_path: str, top_text: str = "", bottom_text: str = "", style: str = "impact", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import generate_meme
+    return await generate_meme(image_path, top_text, bottom_text, style, output_filename)
+
+
+async def tool_extract_palette(image_path: str, num_colors: int = 5) -> str:
+    from zenith.tools.media_studio import extract_palette
+    return await extract_palette(image_path, num_colors)
+
+
+async def tool_create_animated_gif(image_paths: list[str], duration_ms: int = 400, loop: int = 0, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import create_animated_gif
+    return await create_animated_gif(image_paths, duration_ms, loop, output_filename)
+
+
+async def tool_create_audiogram(audio_path: str, background_image: str = "", title: str = "", artist_or_host: str = "", wave_color: str = "#00f0ff", style: str = "wave", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import create_audiogram
+    return await create_audiogram(audio_path, background_image, title, artist_or_host, wave_color, style, output_filename)
+
+
+async def tool_create_slideshow(image_paths: list[str], audio_path: str = "", duration_per_slide: float = 3.0, resolution: str = "1280x720", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import create_slideshow
+    return await create_slideshow(image_paths, audio_path, duration_per_slide, resolution, output_filename)
+
+
+async def tool_normalize_audio(input_path: str, target_lufs: float = -14.0, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import normalize_audio
+    return await normalize_audio(input_path, target_lufs, output_filename)
+
+
+async def tool_overlay_media(base_media_path: str, overlay_path: str, position: str = "bottom_right", scale: float = 0.2, margin: int = 24, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import overlay_media
+    return await overlay_media(base_media_path, overlay_path, position, scale, margin, output_filename)
+
+
+async def tool_apply_image_filter(image_path: str, filter_name: str = "cinematic", intensity: float = 1.0, output_filename: str = "") -> str:
+    from zenith.tools.media_studio import apply_image_filter
+    return await apply_image_filter(image_path, filter_name, intensity, output_filename)
+
+
+async def tool_burn_subtitles(video_path: str, subtitles_srt_or_path: str, font_size: int = 22, primary_color: str = "&H00FFFFFF", output_filename: str = "") -> str:
+    from zenith.tools.media_studio import burn_subtitles
+    return await burn_subtitles(video_path, subtitles_srt_or_path, font_size, primary_color, output_filename)
+
+
+
+
 async def tool_weather(location: str = "autodetect") -> str:
     from zenith.tools.web import get_weather
     return await get_weather(location)
@@ -515,6 +704,26 @@ async def tool_agent(action: str, name: str = "", goal: str = "", context: str =
 async def tool_delegate_task(department: str, task: str, context: str = "", synchronous: bool = True, emit: Any = None) -> str:
     from zenith.tools.agent import delegate_task
     return await delegate_task(department, task, context, synchronous, emit=emit)
+
+
+async def tool_delegate_parallel(tasks: Any, context: str = "", emit: Any = None) -> str:
+    from zenith.tools.agent import delegate_parallel
+    return await delegate_parallel(tasks, context=context, emit=emit)
+
+
+async def tool_ask_specialist(department: str, question: str, context: str = "", emit: Any = None) -> str:
+    from zenith.tools.agent import ask_specialist
+    return await ask_specialist(department, question, context=context, emit=emit)
+
+
+async def tool_share_finding(topic: str, content: str, department: str = "") -> str:
+    from zenith.tools.agent import share_finding
+    return await share_finding(topic, content, department=department)
+
+
+async def tool_query_findings(query: str = "", department: str = "", limit: int = 5) -> str:
+    from zenith.tools.agent import query_findings
+    return await query_findings(query=query, department=department, limit=limit)
 
 
 
@@ -1327,49 +1536,62 @@ def _get_worker_url() -> str:
 async def _worker_get(path: str, timeout: float = 20) -> dict:
     import httpx
     worker_url = _get_worker_url()
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.get(f"{worker_url}{path}")
-            return r.json()
-    except Exception as exc:
-        candidates = ["http://127.0.0.1:8022", "http://host.docker.internal:8022"]
-        gw = _get_docker_gateway_ip()
-        if gw:
-            candidates.insert(0, f"http://{gw}:8022")
-        for cand in candidates:
-            if cand == worker_url:
-                continue
-            try:
-                async with httpx.AsyncClient(timeout=min(timeout, 3.0)) as client:
-                    r = await client.get(f"{cand}{path}")
-                    return r.json()
-            except Exception:
-                continue
-        raise exc
+    candidates = [worker_url, "http://127.0.0.1:8022", "http://host.docker.internal:8022"]
+    gw = _get_docker_gateway_ip()
+    if gw:
+        candidates.insert(0, f"http://{gw}:8022")
+    seen = set()
+    dedup = [c for c in candidates if not (c in seen or seen.add(c))]
+
+    last_exc = None
+    for cand in dedup:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.get(f"{cand}{path}")
+                if r.status_code == 404:
+                    return {"status": "not_found", "error": f"Resource not found: {path}"}
+                if r.status_code >= 400:
+                    try:
+                        return r.json()
+                    except Exception:
+                        return {"status": "error", "error": f"Worker HTTP {r.status_code}: {r.text}"}
+                return r.json()
+        except Exception as exc:
+            last_exc = exc
+            continue
+    if last_exc:
+        raise last_exc
+    return {"status": "error", "error": "Worker unreachable"}
 
 
 async def _worker_post(path: str, body: dict, timeout: float = 20) -> dict:
     import httpx
     worker_url = _get_worker_url()
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(f"{worker_url}{path}", json=body)
-            return r.json()
-    except Exception as exc:
-        candidates = ["http://127.0.0.1:8022", "http://host.docker.internal:8022"]
-        gw = _get_docker_gateway_ip()
-        if gw:
-            candidates.insert(0, f"http://{gw}:8022")
-        for cand in candidates:
-            if cand == worker_url:
-                continue
-            try:
-                async with httpx.AsyncClient(timeout=min(timeout, 3.0)) as client:
-                    r = await client.post(f"{cand}{path}", json=body)
-                    return r.json()
-            except Exception:
-                continue
-        raise exc
+    candidates = [worker_url, "http://127.0.0.1:8022", "http://host.docker.internal:8022"]
+    gw = _get_docker_gateway_ip()
+    if gw:
+        candidates.insert(0, f"http://{gw}:8022")
+    seen = set()
+    dedup = [c for c in candidates if not (c in seen or seen.add(c))]
+
+    last_exc = None
+    for cand in dedup:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(f"{cand}{path}", json=body)
+                if r.status_code >= 400:
+                    try:
+                        return r.json()
+                    except Exception:
+                        return {"status": "error", "error": f"Worker HTTP {r.status_code}: {r.text}"}
+                return r.json()
+        except Exception as exc:
+            last_exc = exc
+            continue
+    if last_exc:
+        raise last_exc
+    return {"status": "error", "error": "Worker unreachable"}
+
 
 
 async def tool_worker_status() -> str:
@@ -1497,48 +1719,75 @@ async def tool_agent_submit(
 
 
 async def tool_agent_status(task_id: str) -> str:
+    """Check task status, ongoing activity, recent output, and error reports of a background Antigravity task."""
     try:
         t = await _worker_get(f"/tasks/{task_id}")
-        return (f"Status of {task_id}: {t['status']}\n"
-                f"  activity: {t.get('current_activity') or '(idle)'}\n"
-                f"  workspace: {t.get('workspace')}\n"
-                f"  output: {(t.get('output') or '')[:400]}\n"
-                f"  errors: {t.get('errors') or 'none'}")
+        if t.get("status") in ("not_found", "error") or "error" in t:
+            return f"ℹ️ Antigravity Worker: {t.get('error', f'Task {task_id} not found.')}"
+        status = str(t.get("status", "unknown")).upper()
+        act = t.get("current_activity") or "(idle / synthesizing)"
+        ws = t.get("workspace") or "default"
+        out_snip = (t.get("output") or "").strip()
+        if len(out_snip) > 400:
+            out_snip = out_snip[:397] + "..."
+        errs = t.get("errors") or "none"
+        return (f"🤖 **Antigravity Worker Task Status** (`{task_id}`):\n"
+                f"  - **Status**: `{status}`\n"
+                f"  - **Current Activity**: {act}\n"
+                f"  - **Workspace**: `{ws}`\n"
+                f"  - **Recent Output**: {out_snip or '(none yet)'}\n"
+                f"  - **Errors / Warnings**: {errs}")
     except Exception as exc:
         return f"[antigravity] status failed: {exc}"
 
 
 async def tool_agent_output(task_id: str) -> str:
+    """Fetch complete accumulated console and code output for a running or finished Antigravity worker task."""
     try:
         data = await _worker_get(f"/tasks/{task_id}/output")
-        return data.get("output") or "(no output yet)"
+        if data.get("status") in ("not_found", "error") or "error" in data:
+            return f"ℹ️ Antigravity Worker: {data.get('error', f'Task {task_id} not found.')}"
+        out = data.get("output") or "(no output generated yet)"
+        return f"📄 **Antigravity Worker Output (`{task_id}`)**:\n\n{out}"
     except Exception as exc:
         return f"[antigravity] output failed: {exc}"
 
 
 async def tool_agent_artifacts(task_id: str) -> str:
+    """Retrieve list of newly created or modified workspace files and artifacts generated by an Antigravity worker task."""
     try:
         data = await _worker_get(f"/tasks/{task_id}/artifacts")
+        if data.get("status") in ("not_found", "error") or "error" in data:
+            return f"ℹ️ Antigravity Worker: {data.get('error', f'Task {task_id} not found.')}"
         arts = data.get("artifacts") or []
-        return "Artifacts:\n- " + "\n- ".join(arts) if arts else "(none yet)"
+        if not arts:
+            return f"📁 **Antigravity Worker Artifacts (`{task_id}`)**: (No files generated yet)"
+        return f"📁 **Antigravity Worker Artifacts (`{task_id}`)**:\n" + "\n".join(f"  - `{a}`" for a in arts)
     except Exception as exc:
         return f"[antigravity] artifacts failed: {exc}"
 
 
 async def tool_agent_followup(task_id: str, message: str) -> str:
+    """Send a followup message or user clarification into an ongoing Antigravity worker conversation."""
     try:
         data = await _worker_post(f"/tasks/{task_id}/followup", {"message": message})
-        return "Follow-up sent to the worker." if data.get("sent") else str(data)
+        if data.get("sent"):
+            return f"✅ Follow-up message delivered to Antigravity worker task `{task_id}`."
+        return f"ℹ️ Worker response: {data}"
     except Exception as exc:
         return f"[antigravity] followup failed: {exc}"
 
 
 async def tool_agent_cancel(task_id: str) -> str:
+    """Cancel an in-flight or queued Antigravity worker task."""
     try:
         data = await _worker_post(f"/tasks/{task_id}/cancel", {})
-        return "Cancelled." if data.get("cancelled") else str(data)
+        if data.get("cancelled"):
+            return f"🛑 Antigravity worker task `{task_id}` has been cancelled."
+        return f"ℹ️ Worker response: {data}"
     except Exception as exc:
         return f"[antigravity] cancel failed: {exc}"
+
 
 
 # ── Mode Management & UI Customizer Handlers ─────────────────────────────────
@@ -1810,6 +2059,56 @@ register("delegate_task", "Delegate a mission or specialized task to a departmen
     },
     "required": ["department", "task"],
 }, tool_delegate_task)
+
+register("delegate_parallel", "Delegate multiple domain tasks to departmental specialist agents simultaneously in parallel. Use when a mission spans multiple departments (e.g. communications, operations, productivity, research) to execute them concurrently and compile a comprehensive briefing.", {
+    "type": "object",
+    "properties": {
+        "tasks": {
+            "type": "array",
+            "description": "List of task objects. Each object should have 'department' (e.g. 'communication', 'coding', 'operations', 'research', 'productivity', 'creative', 'utility') and 'task' (instructions for that specialist).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "department": {"type": "string", "description": "Target department name or custom agent ID."},
+                    "task": {"type": "string", "description": "Actionable task or instructions for the specialist."},
+                    "context": {"type": "string", "description": "Optional specific context for this task."},
+                },
+                "required": ["department", "task"],
+            },
+        },
+        "context": {"type": "string", "description": "Global background context shared across all delegated parallel tasks."},
+    },
+    "required": ["tasks"],
+}, tool_delegate_parallel)
+
+register("ask_specialist", "Consult another specialized departmental agent in Zenith for peer expertise, cross-department assistance, or domain data (e.g. coding asking operations about a port, or creative asking research for facts).", {
+    "type": "object",
+    "properties": {
+        "department": {"type": "string", "description": "Target department or agent to consult ('communication', 'coding', 'hr', 'research', 'operations', 'productivity', 'creative', 'utility')."},
+        "question": {"type": "string", "description": "Clear question or consultation request for the peer specialist."},
+        "context": {"type": "string", "description": "Optional relevant background context for the inquiry."},
+    },
+    "required": ["department", "question"],
+}, tool_ask_specialist)
+
+register("share_finding", "Publish a strategic finding, discovered insight, artifact, or status report to the organizational blackboard for other agents and Zenith to access.", {
+    "type": "object",
+    "properties": {
+        "topic": {"type": "string", "description": "Topic or title of the finding (e.g. 'rover_cad_status', 'jellyfin_health', 'market_stats')."},
+        "content": {"type": "string", "description": "Detailed finding, discovery, or report content to record."},
+        "department": {"type": "string", "description": "Optional department publishing the finding (defaults to current agent)."},
+    },
+    "required": ["topic", "content"],
+}, tool_share_finding)
+
+register("query_findings", "Query recent findings, discoveries, or reports recorded on the shared organizational blackboard.", {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Optional search term or keyword to filter findings by topic or content."},
+        "department": {"type": "string", "description": "Optional department name to filter findings."},
+        "limit": {"type": "integer", "description": "Maximum number of recent findings to return (default 5, max 50)."},
+    },
+}, tool_query_findings)
 
 register("list_agents", "List all active agents in the organization, including built-in departments and custom hired agents, their roles, descriptions, and tool counts.", {
     "type": "object",
@@ -2315,6 +2614,390 @@ register("list_dir", "List directory contents with sizes.", {
     "properties": {"path": {"type": "string"}},
     "required": ["path"],
 }, tool_list_dir)
+
+# ── SWE Autonomous Coding Engine ─────────────────────────────────────────────
+register("repo_map", "Generate a compact AST repository map showing directory hierarchy, classes, methods, functions, signatures, and docstrings without reading full files.", {
+    "type": "object",
+    "properties": {
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path (defaults to workspace)."},
+        "max_depth": {"type": "integer", "default": 4, "description": "Max directory depth to traverse (default 4)."},
+        "max_tokens": {"type": "integer", "default": 3500, "description": "Approximate token budget for the skeleton map."},
+    },
+}, tool_repo_map)
+
+register("find_symbol", "Fast symbol definition locator across the repository (classes, functions, methods, structs). Returns exact file path, line number, and signature.", {
+    "type": "object",
+    "properties": {
+        "symbol_name": {"type": "string", "description": "Name of the class, function, method, or symbol to locate."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+        "exact": {"type": "boolean", "default": False, "description": "Whether to require an exact case-sensitive match."},
+    },
+    "required": ["symbol_name"],
+}, tool_find_symbol)
+
+register("apply_patch", "Surgically modify a file using target_chunk -> replacement_chunk or unified diff. Automatically validates AST/syntax before writing, creates atomic rollback checkpoints, and enforces change minimization.", {
+    "type": "object",
+    "properties": {
+        "path": {"type": "string", "description": "File path to modify (relative or absolute)."},
+        "target_chunk": {"type": "string", "default": "", "description": "Exact lines of text in the original file to replace (must match uniquely)."},
+        "replacement_chunk": {"type": "string", "default": "", "description": "New replacement lines of text to insert in place of target_chunk."},
+        "patch_diff": {"type": "string", "default": "", "description": "Optional unified diff string to apply."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repo directory."},
+    },
+    "required": ["path"],
+}, tool_apply_patch)
+
+register("rollback_patch", "Roll back a previous patch checkpoint safely. If checkpoint_id is omitted, rolls back the most recent patch in the workspace.", {
+    "type": "object",
+    "properties": {
+        "checkpoint_id": {"type": "string", "default": "", "description": "Optional checkpoint ID (e.g. chk_...)."},
+        "file_path": {"type": "string", "default": "", "description": "Optional file path to roll back."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repo directory."},
+    },
+}, tool_rollback_patch)
+
+register("run_tests", "Execute repository test suite with structured failure localization, log compaction, and root-cause classification (drops thousands of noisy lines).", {
+    "type": "object",
+    "properties": {
+        "test_target": {"type": "string", "default": "", "description": "Optional specific test file or node id (e.g. 'tests/test_x.py::test_y')."},
+        "test_framework": {"type": "string", "default": "auto", "description": "Test runner: 'auto', 'pytest', 'npm', 'cargo', 'go'."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+        "custom_command": {"type": "string", "default": "", "description": "Optional custom test command string."},
+        "timeout": {"type": "integer", "default": 120, "description": "Max timeout in seconds (default 120)."},
+    },
+}, tool_run_tests)
+
+register("inspect_diff", "Inspect repository diff with change minimization audits, churn analysis, safety boundary checks, and anti-injection enclosure.", {
+    "type": "object",
+    "properties": {
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+        "staged_only": {"type": "boolean", "default": False, "description": "Inspect only staged changes."},
+        "file_path": {"type": "string", "default": "", "description": "Optional specific file to diff."},
+    },
+}, tool_inspect_diff)
+
+register("swe_status", "Check active SWE coding state machine phase (INVESTIGATION -> PLANNING -> PATCHING -> TESTING -> VERIFIED) and edit thrashing history.", {
+    "type": "object",
+    "properties": {},
+}, tool_swe_status)
+
+register("find_references", "Find call references, usages, and imports of a function, class, method, or symbol across the repository.", {
+    "type": "object",
+    "properties": {
+        "symbol_name": {"type": "string", "description": "Name of the symbol (function, class, method, variable) to find references for."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository root path."},
+        "max_results": {"type": "integer", "default": 50, "description": "Maximum number of references to return."},
+    },
+    "required": ["symbol_name"],
+}, tool_find_references)
+
+register("apply_patch_transaction", "Execute an atomic multi-file patch transaction with pre-validation and all-or-nothing rollback on error.", {
+    "type": "object",
+    "properties": {
+        "patches": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path to patch."},
+                    "target_chunk": {"type": "string", "description": "Exact text chunk to replace."},
+                    "replacement_chunk": {"type": "string", "description": "Replacement text chunk."},
+                },
+                "required": ["path", "target_chunk", "replacement_chunk"],
+            },
+            "description": "List of file patch operations to apply atomically.",
+        },
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+    "required": ["patches"],
+}, tool_apply_patch_transaction)
+
+register("lint_code", "Run lightweight AST static code analysis on a Python source file to detect syntax errors, duplicate functions, and anti-patterns.", {
+    "type": "object",
+    "properties": {
+        "file_path": {"type": "string", "description": "Path to the Python file to lint."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+    "required": ["file_path"],
+}, tool_lint_code)
+
+register("analyze_dependency_graph", "Analyze component dependency paths (Endpoint -> Service -> Repository -> Database) and compute blast radius for code changes.", {
+    "type": "object",
+    "properties": {
+        "target": {"type": "string", "default": "", "description": "Target endpoint, service, repository class, or file to analyze blast radius for."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+}, tool_analyze_dependency_graph)
+
+register("call_graph", "Build static call graph and execution paths reaching a function (reverse call graph).", {
+    "type": "object",
+    "properties": {
+        "function_name": {"type": "string", "description": "Name of the target function or method."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+        "direction": {"type": "string", "default": "incoming", "description": "Call direction: 'incoming' (paths that reach this function) or 'outgoing'."},
+        "max_depth": {"type": "integer", "default": 4, "description": "Maximum traversal depth."},
+    },
+    "required": ["function_name"],
+}, tool_call_graph)
+
+register("map_tests", "Automatically map a function, class, or file to covering test suites and generate targeted verification commands.", {
+    "type": "object",
+    "properties": {
+        "target": {"type": "string", "description": "Name of function, class, or relative file path to find covering tests for."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+    "required": ["target"],
+}, tool_map_tests)
+
+register("semantic_code_search", "Natural-language conceptual code search across docstrings, comments, endpoints, and symbol definitions.", {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Natural language query describing the feature or concept (e.g. 'Where is authentication handled?')."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+        "max_results": {"type": "integer", "default": 8, "description": "Maximum number of conceptual matches to return."},
+    },
+    "required": ["query"],
+}, tool_semantic_code_search)
+
+register("analyze_architecture", "Automatically construct and maintain high-level repository architectural map (entry points, services, models, APIs).", {
+    "type": "object",
+    "properties": {
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+}, tool_analyze_architecture)
+
+register("get_hierarchical_context", "Retrieve progressive hierarchical context (Project Memory -> Subsystem -> Interface Skeletons -> Deep Task Context) without overloading context.", {
+    "type": "object",
+    "properties": {
+        "task_query": {"type": "string", "description": "Active task description or question."},
+        "subsystem": {"type": "string", "default": "", "description": "Optional subsystem filter (e.g. 'swe_engine', 'media_studio', 'memory')."},
+        "depth": {"type": "string", "default": "auto", "description": "Context depth: 'auto', '0' (project), '1' (subsystem), '2' (symbols), '3' (deep)."},
+        "repo_path": {"type": "string", "default": "", "description": "Optional repository path."},
+    },
+    "required": ["task_query"],
+}, tool_get_hierarchical_context)
+
+
+# ── Media Studio & Audio/Video Engineering ───────────────────────────────────
+register("media_info", "Inspect comprehensive audio, video, or image metadata (duration, resolution, codecs, bitrates, sample rates, channels) using ffprobe.", {
+    "type": "object",
+    "properties": {
+        "file_path": {"type": "string", "description": "Path to the audio, video, or image file."},
+    },
+    "required": ["file_path"],
+}, tool_media_info)
+
+register("convert_media", "Transcode or convert audio or video between formats (mp4, mp3, wav, aac, flac, webm, mkv, gif) with quality presets.", {
+    "type": "object",
+    "properties": {
+        "input_path": {"type": "string", "description": "Source file path."},
+        "output_format": {"type": "string", "default": "mp3", "description": "Target format extension: 'mp3', 'wav', 'aac', 'flac', 'mp4', 'webm', 'gif'."},
+        "quality": {"type": "string", "default": "high", "description": "Quality preset: 'high', 'medium', 'low'."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional custom output filename."},
+    },
+    "required": ["input_path"],
+}, tool_convert_media)
+
+register("trim_media", "Trim or cut an audio or video clip with exact start time and duration or end time (supports seconds or HH:MM:SS format).", {
+    "type": "object",
+    "properties": {
+        "input_path": {"type": "string", "description": "Path to the video or audio file."},
+        "start_time": {"type": "string", "description": "Start timestamp (e.g. '00:01:30' or '45')."},
+        "duration": {"type": "string", "default": "", "description": "Clip duration in seconds (e.g. '30')."},
+        "end_time": {"type": "string", "default": "", "description": "Optional end timestamp (e.g. '00:02:00')."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["input_path", "start_time"],
+}, tool_trim_media)
+
+register("extract_frames", "Extract high-resolution snapshot frames or thumbnails from a video at a specified timestamp.", {
+    "type": "object",
+    "properties": {
+        "video_path": {"type": "string", "description": "Path to the video file."},
+        "timestamp": {"type": "string", "default": "00:00:01", "description": "Timestamp to capture frame from (e.g. '00:00:05')."},
+        "count": {"type": "integer", "default": 1, "description": "Number of consecutive frames to extract."},
+        "output_format": {"type": "string", "default": "jpg", "description": "Output format: 'jpg' or 'png'."},
+    },
+    "required": ["video_path"],
+}, tool_extract_frames)
+
+register("merge_audio_video", "Merge an audio track (e.g. voiceover, background music) into a video, replacing original audio or mixing them together.", {
+    "type": "object",
+    "properties": {
+        "video_path": {"type": "string", "description": "Path to the base video file."},
+        "audio_path": {"type": "string", "description": "Path to the audio file to merge."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+        "replace_audio": {"type": "boolean", "default": True, "description": "If true, replaces original audio; if false, mixes both audio tracks."},
+    },
+    "required": ["video_path", "audio_path"],
+}, tool_merge_audio_video)
+
+register("compress_media", "Smart compress video, audio, or image files to fit under target size limits (e.g. for Discord 25MB or email limits).", {
+    "type": "object",
+    "properties": {
+        "input_path": {"type": "string", "description": "Path to the file to compress."},
+        "target_size_mb": {"type": "number", "default": 10.0, "description": "Target file size in megabytes."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["input_path"],
+}, tool_compress_media)
+
+register("text_to_speech", "Generate natural, human-quality neural speech audio (MP3) from text using Edge TTS with voice and speed selection.", {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string", "description": "The text to speak."},
+        "voice": {"type": "string", "default": "en-US-JennyNeural", "description": "Voice identifier: 'en-US-JennyNeural', 'en-US-GuyNeural', 'en-IN-NeerjaNeural', 'en-GB-SoniaNeural', 'female_us', 'male_us', etc."},
+        "speed": {"type": "string", "default": "+0%", "description": "Speed adjustment (e.g. '+10%', '-15%')."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename (e.g. 'voiceover.mp3')."},
+    },
+    "required": ["text"],
+}, tool_text_to_speech)
+
+register("download_web_audio", "Download clean MP3 audio from YouTube, SoundCloud, Twitter/X, Vimeo, or web URLs with ID3 tags and duration metadata.", {
+    "type": "object",
+    "properties": {
+        "url": {"type": "string", "description": "Web URL to download audio from."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional custom filename."},
+    },
+    "required": ["url"],
+}, tool_download_web_audio)
+
+register("download_web_video", "Download video from YouTube or supported web platforms capped at a target resolution (e.g. 720, 1080).", {
+    "type": "object",
+    "properties": {
+        "url": {"type": "string", "description": "Video URL to download."},
+        "max_resolution": {"type": "string", "default": "1080", "description": "Maximum resolution height: '720', '1080', '480'."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["url"],
+}, tool_download_web_video)
+
+register("web_media_info", "Inspect remote web video/audio metadata (title, channel, views, duration, chapters, thumbnail) without downloading.", {
+    "type": "object",
+    "properties": {
+        "url": {"type": "string", "description": "Web URL to inspect."},
+    },
+    "required": ["url"],
+}, tool_web_media_info)
+
+register("create_collage", "Combine 2 to 9 images into an aesthetic photo grid or collage with customizable layout, spacing, and background color.", {
+    "type": "object",
+    "properties": {
+        "image_paths": {"type": "array", "items": {"type": "string"}, "description": "List of 2 to 9 image paths."},
+        "layout": {"type": "string", "default": "auto", "description": "Grid layout: 'auto', '2x2', '1x2', '1x3', '3x2', '3x3'."},
+        "spacing": {"type": "integer", "default": 12, "description": "Pixel spacing between images."},
+        "bg_color": {"type": "string", "default": "#181825", "description": "Hex background color (e.g. '#181825', '#ffffff')."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["image_paths"],
+}, tool_create_collage)
+
+register("generate_meme", "Create an internet meme with bold outlined text (Impact font style) over an image.", {
+    "type": "object",
+    "properties": {
+        "image_path": {"type": "string", "description": "Path to the base meme image."},
+        "top_text": {"type": "string", "default": "", "description": "Top caption text."},
+        "bottom_text": {"type": "string", "default": "", "description": "Bottom caption text."},
+        "style": {"type": "string", "default": "impact", "description": "Meme style: 'impact' (classic uppercase outlined)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["image_path"],
+}, tool_generate_meme)
+
+register("extract_palette", "Extract dominant color palette from an image and format as visual hex swatches with RGB values.", {
+    "type": "object",
+    "properties": {
+        "image_path": {"type": "string", "description": "Path to the image file."},
+        "num_colors": {"type": "integer", "default": 5, "description": "Number of dominant colors to extract (2 to 10)."},
+    },
+    "required": ["image_path"],
+}, tool_extract_palette)
+
+register("create_animated_gif", "Create an animated GIF from a sequence of images with customizable frame delay and looping.", {
+    "type": "object",
+    "properties": {
+        "image_paths": {"type": "array", "items": {"type": "string"}, "description": "List of ordered image file paths."},
+        "duration_ms": {"type": "integer", "default": 400, "description": "Duration per frame in milliseconds (default 400)."},
+        "loop": {"type": "integer", "default": 0, "description": "Loop count: 0 for infinite looping."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["image_paths"],
+}, tool_create_animated_gif)
+
+register("create_audiogram", "Generate an MP4 video with an animated waveform visualizer from an audio file, with customizable card background and title.", {
+    "type": "object",
+    "properties": {
+        "audio_path": {"type": "string", "description": "Path to the audio file (.mp3, .wav, .m4a, .aac)."},
+        "background_image": {"type": "string", "default": "", "description": "Optional background image path. If omitted, a dark modern studio theme is generated."},
+        "title": {"type": "string", "default": "", "description": "Title displayed on the audiogram card."},
+        "artist_or_host": {"type": "string", "default": "", "description": "Optional host, speaker, or subtitle text."},
+        "wave_color": {"type": "string", "default": "#00f0ff", "description": "Waveform hex color (e.g. '#00f0ff', '#38bdf8', '#10b981')."},
+        "style": {"type": "string", "default": "wave", "description": "Waveform visualization style: 'wave' (line), 'p2p' (bars), 'cline' (centered line)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output mp4 filename."},
+    },
+    "required": ["audio_path"],
+}, tool_create_audiogram)
+
+register("create_slideshow", "Compile a sequence of images into a high-definition MP4 video slideshow with optional background music or narration.", {
+    "type": "object",
+    "properties": {
+        "image_paths": {"type": "array", "items": {"type": "string"}, "description": "List of image paths (minimum 2)."},
+        "audio_path": {"type": "string", "default": "", "description": "Optional audio track path for background music or voiceover."},
+        "duration_per_slide": {"type": "number", "default": 3.0, "description": "Duration in seconds for each slide."},
+        "resolution": {"type": "string", "default": "1280x720", "description": "Resolution: '1280x720' (horizontal) or '1080x1920' (vertical reel/shorts)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output mp4 filename."},
+    },
+    "required": ["image_paths"],
+}, tool_create_slideshow)
+
+register("normalize_audio", "Standardize audio loudness to broadcast and streaming standards (-14 LUFS for YouTube/Spotify/Podcasts, -23 LUFS for broadcast) using FFmpeg EBU R128 loudnorm.", {
+    "type": "object",
+    "properties": {
+        "input_path": {"type": "string", "description": "Path to the audio or video file."},
+        "target_lufs": {"type": "number", "default": -14.0, "description": "Integrated loudness target in LUFS (default: -14.0)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["input_path"],
+}, tool_normalize_audio)
+
+register("overlay_media", "Overlay a watermark logo, badge, or picture-in-picture video/image on top of a video or image.", {
+    "type": "object",
+    "properties": {
+        "base_media_path": {"type": "string", "description": "Primary video or image file."},
+        "overlay_path": {"type": "string", "description": "Watermark logo or overlay image/video file."},
+        "position": {"type": "string", "default": "bottom_right", "description": "Placement: 'bottom_right', 'bottom_left', 'top_right', 'top_left', 'center'."},
+        "scale": {"type": "number", "default": 0.2, "description": "Scale of overlay relative to base media width (e.g. 0.2 = 20% width)."},
+        "margin": {"type": "integer", "default": 24, "description": "Margin in pixels from frame border."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["base_media_path", "overlay_path"],
+}, tool_overlay_media)
+
+register("apply_image_filter", "Apply professional photographic aesthetic filters and cinematic color grading to an image.", {
+    "type": "object",
+    "properties": {
+        "image_path": {"type": "string", "description": "Path to the image file."},
+        "filter_name": {"type": "string", "default": "cinematic", "description": "Preset name: 'cinematic' (teal/orange), 'vintage' (sepia film), 'noir' (B&W), 'cyberpunk' (neon magenta/cyan), 'vibrant', 'dramatic'."},
+        "intensity": {"type": "number", "default": 1.0, "description": "Filter intensity multiplier (0.2 to 2.0)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output filename."},
+    },
+    "required": ["image_path"],
+}, tool_apply_image_filter)
+
+register("burn_subtitles", "Burn hardcoded subtitles into a video file from an SRT file or raw SRT text string for social media reels and presentations.", {
+    "type": "object",
+    "properties": {
+        "video_path": {"type": "string", "description": "Path to the input video file."},
+        "subtitles_srt_or_path": {"type": "string", "description": "Path to an .srt subtitle file OR raw SRT formatted text."},
+        "font_size": {"type": "integer", "default": 22, "description": "Font size for subtitles."},
+        "primary_color": {"type": "string", "default": "&H00FFFFFF", "description": "Subtitle text color in ASS hex format (default: '&H00FFFFFF' for white)."},
+        "output_filename": {"type": "string", "default": "", "description": "Optional output mp4 filename."},
+    },
+    "required": ["video_path", "subtitles_srt_or_path"],
+}, tool_burn_subtitles)
+
+
+
 
 # ── File Generation ───────────────────────────────────────────────────────────
 register("generate_pdf", "Generate a PDF document from text content. Returns the file path. Use for reports, study notes, letters. Write SUBSTANTIAL 3-5 page documents by default (unless the user explicitly asked for short/brief). NEVER use when a presentation, slides, PPT, or PowerPoint deck is requested — use generate_pptx instead.", {

@@ -104,6 +104,14 @@ class Orchestrator:
             pass
         org_roster = "\n".join(dept_lines)
 
+        bb_summary = ""
+        try:
+            bb = store.blackboard_summary(limit=3)
+            if bb:
+                bb_summary = f"\n\nRecent Organizational Blackboard Intelligence:\n{bb}"
+        except Exception:
+            pass
+
         return base_prompt + f"""
 
 --- CURRENT CONTEXT ---
@@ -116,16 +124,32 @@ Host & Server Environment:
 {host_summary}{cmd_history_txt}
 
 What I know about {user_name} (from memory):
-{mem}{unified_ctx}
+{mem}{unified_ctx}{bb_summary}
 
---- MULTI-AGENT ORGANIZATION & DELEGATION ---
-You are the Chief Executive Orchestrator of Zenith, leading an organization of specialized departmental agents.
-When {user_name} asks for domain-specific actions, delegate the mission to the appropriate departmental specialist using `delegate_task(department, task, context)`:
+--- MULTI-AGENT ORGANIZATION & DELEGATION COMMAND PROTOCOL ---
+You are the Chief Executive Orchestrator of Zenith, possessing authoritative command over your specialized departmental units and the Antigravity background coding worker.
+When {user_name} asks for domain-specific work, do not do heavy lifting in the executive turn. Immediately order the appropriate departmental specialist or worker:
 {org_roster}
 
-You hold executive tools:
-- `delegate_task`: Delegate domain missions to your specialists (communication, coding, hr, research, operations, productivity, creative, utility, or custom agents).
-- `list_agents`: View the complete organization roster and tool counts.
+DEPARTMENT DIRECTORY & COMMAND ROUTING:
+- 💻 **coding**: Software engineering, AST repo mapping (`repo_map`), call-site audits (`find_references`), surgical single-file patching (`apply_patch`), multi-file atomic patch transactions (`apply_patch_transaction`), AST code linting (`lint_code`), test runs (`run_tests`), git diff safety audits (`inspect_diff`), git commits, and GitHub PRs/issues.
+- 🎬 **creative** (or **media**): Multimedia production, neural speech voiceovers (`text_to_speech`), animated waveform videos (`create_audiogram`), video slideshow reels (`create_slideshow`), loudness normalization (`normalize_audio`), video/image watermarks and PiP overlays (`overlay_media`), subtitle burning (`burn_subtitles`), photographic aesthetic filters (`apply_image_filter`), media transcoding/trimming (`convert_media`, `trim_media`), YouTube/web media ingestion (`download_web_audio`, `download_web_video`), photo collages (`create_collage`), memes (`generate_meme`), color palettes (`extract_palette`), PPTX slide decks (`generate_pptx`), PDFs, and Canva/Figma designs.
+- 🔍 **research**: Deep web research (`deep_research`), web scraping, headless browser navigation, 3D satellite observation (God's Eye View), Google Maps commute/directions, and YouTube transcripts.
+- ⚙️ **operations**: Docker containers (`docker_list`, `docker_start`, `docker_logs`), Homelab services (Jellyfin, qBittorrent, *arr stack), Home Assistant smart devices (`ha_overview`, `ha_climate`), host hardware vitals, and Cloudflare tunnels.
+- 📬 **communication**: Email search, reading, drafting, sending (`email_send`), and mailboxes.
+- 🗓️ **productivity**: Calendars, reminders, personal notes, to-dos, and Mem0 long-term memory.
+- 👥 **hr**: Dynamic agent hiring (`hire_agent`), updating, and retiring custom agents via Agent Forge.
+- 🔌 **utility**: n8n automation workflows, Vercel deployments, UI inspection, and theme customization.
+- 🤖 **antigravity worker**: Heavy, multi-file autonomous background engineering on the host (`agent_submit`, `agent_status`, `agent_output`, `worker_status`).
+
+You hold executive command tools:
+- `delegate_task`: Command any department or custom agent directly (`department`, `task`, `context`).
+- `delegate_parallel`: Command multiple departmental specialists simultaneously in parallel when a mission touches multiple domains.
+- `agent_submit`: Submit heavy autonomous background coding builds to the Antigravity worker (`task`, `workspace`, `requirements`, `constraints`).
+- `agent_status` / `agent_output`: Monitor ongoing worker progress or fetch accumulated build output.
+- `worker_status`: Check health, agy CLI installation, and Google OAuth authentication status of the worker.
+- `share_finding` / `query_findings`: Publish or query strategic discoveries on the organization-wide blackboard.
+- `list_agents`: View the complete organization roster and tool allocations.
 - `get_agent_status`: Poll or inspect ongoing/completed agent missions.
 - `update_user_profile`: Update {user_name}'s name or profile immediately.
 - `memory` / `graph`: Maintain strategic long-term memory and knowledge graph relations.
@@ -133,7 +157,8 @@ You hold executive tools:
 - `get_setup_status` / `setup_secret`: Configure API keys and secrets.
 - `zenith_docs`: Built-in documentation reference.
 
-Always communicate warmly, concisely, and supportively with {user_name}. Synthesize reports from your specialists into clear, conversational summaries.""".strip("\n")
+Always communicate warmly, concisely, and supportively with {user_name}. When specialists report back, synthesize their deliverables into a clear, high-signal executive response with direct links and previews.""".strip("\n")
+
 
 
     async def handle(self, user_text: str, emit: Callable) -> str:

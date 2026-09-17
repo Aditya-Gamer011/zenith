@@ -5233,3 +5233,51 @@ html.theme-smooth .composer-row, html.theme-smooth .m-body * {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
 }
+
+/* ─── Organizational Blackboard & Quick Dispatch ─────────────────────────── */
+.blackboard-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.blackboard-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.74rem;
+  transition: border-color 0.15s;
+}
+.blackboard-item:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+.blackboard-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.blackboard-topic {
+  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+.blackboard-time {
+  font-size: 0.65rem;
+  color: var(--ink-dim);
+}
+.blackboard-content {
+  color: var(--ink-muted);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dept-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}

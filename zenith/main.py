@@ -727,6 +727,51 @@ async def api_hire_agent(request: Request):
     return {"ok": ok, "message": msg}
 
 
+@app.post("/api/agents/dispatch")
+async def api_dispatch_agent(request: Request):
+    """Directly dispatch a mission to an agent or department."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+
+    dept = data.get("department") or data.get("name") or data.get("id") or ""
+    task = data.get("task") or data.get("goal") or ""
+    ctx = data.get("context") or ""
+    if not dept or not task:
+        return JSONResponse({"ok": False, "error": "Both 'department' and 'task' are required."}, status_code=400)
+
+    res = await runner.execute_task(dept, task, context=ctx)
+    return res
+
+
+@app.get("/api/agents/blackboard")
+async def api_agents_blackboard(query: str = "", department: str = "", limit: int = 15):
+    """Query recent intelligence on the shared organizational blackboard."""
+    from zenith.memory import store
+    findings = store.blackboard_query(query=query, department=department, limit=limit)
+    return {"ok": True, "count": len(findings), "findings": findings}
+
+
+@app.post("/api/agents/blackboard")
+async def api_agents_blackboard_post(request: Request):
+    """Publish a finding to the shared organizational blackboard."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+
+    from zenith.memory import store
+    topic = (data.get("topic") or "").strip()
+    content = (data.get("content") or "").strip()
+    dept = (data.get("department") or "Manual").strip()
+    if not topic or not content:
+        return JSONResponse({"ok": False, "error": "Both 'topic' and 'content' are required."}, status_code=400)
+
+    row_id = store.blackboard_publish(department=dept, topic=topic, content=content, metadata=data.get("metadata"))
+    return {"ok": True, "id": row_id, "message": f"Published finding #{row_id}"}
+
+
 @app.delete("/api/agents/{agent_id}")
 async def api_fire_agent(agent_id: str):
     """Fire and retire a custom specialist agent."""

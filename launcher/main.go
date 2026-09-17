@@ -1,7 +1,10 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,8 +14,9 @@ import (
 )
 
 const (
-	zenithVersion = "2.1.0"
+	zenithVersion = "2.2.0"
 	repoURL       = "https://github.com/Aditya-Gamer011/zenith.git"
+	archiveURL    = "https://github.com/Aditya-Gamer011/zenith/archive/refs/heads/main.zip"
 )
 
 // Windows Console API imports for VT100 / ANSI color and Explorer double-click detection
@@ -106,26 +110,119 @@ func findScriptPath() (string, string, error) {
 			return candidate, appDir, nil
 		}
 
-		// 4. Auto-clone if missing
-		fmt.Println("[Zenith] Repository not found locally. Cloning to ~/.zenith/app...")
+		// 4. Auto-clone or auto-download if missing
+		fmt.Println("[Zenith] Repository not found locally. Initializing in ~/.zenith/app...")
 		os.MkdirAll(filepath.Join(homeDir, ".zenith"), 0755)
+
+		retrieved := false
 		gitPath, err := exec.LookPath("git")
-		if err != nil {
-			return "", "", fmt.Errorf("git is required to clone Zenith. Please install git or place zenith.exe in the zenith repository folder")
+		if err == nil {
+			fmt.Println("[Zenith] Cloning repository via git...")
+			cloneCmd := exec.Command(gitPath, "clone", "--depth", "1", repoURL, appDir)
+			cloneCmd.Stdout = os.Stdout
+			cloneCmd.Stderr = os.Stderr
+			if err := cloneCmd.Run(); err == nil {
+				retrieved = true
+			}
 		}
 
-		cloneCmd := exec.Command(gitPath, "clone", "--depth", "1", repoURL, appDir)
-		cloneCmd.Stdout = os.Stdout
-		cloneCmd.Stderr = os.Stderr
-		if err := cloneCmd.Run(); err != nil {
-			return "", "", fmt.Errorf("failed to clone repository: %v", err)
+		if !retrieved {
+			fmt.Println("[Zenith] Git not detected or clone failed; retrieving archive directly from GitHub...")
+			if err := downloadAndExtractZip(archiveURL, appDir); err != nil {
+				return "", "", fmt.Errorf("failed to retrieve Zenith repository: %v", err)
+			}
 		}
+
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, appDir, nil
 		}
 	}
 
 	return "", "", fmt.Errorf("could not locate zenith-install.ps1")
+}
+
+func downloadAndExtractZip(url string, destDir string) error {
+	fmt.Println("[Zenith] Connecting to GitHub release archive...")
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("download request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server responded with status %s", resp.Status)
+	}
+
+	tmpFile, err := os.CreateTemp("", "zenith-repo-*.zip")
+	if err != nil {
+		return fmt.Errorf("failed to create temp archive file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		return fmt.Errorf("failed writing archive stream: %w", err)
+	}
+
+	stat, err := tmpFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat temp archive: %w", err)
+	}
+
+	zipReader, err := zip.NewReader(tmpFile, stat.Size())
+	if err != nil {
+		return fmt.Errorf("failed opening zip archive: %w", err)
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("failed to create target folder: %w", err)
+	}
+
+	fmt.Println("[Zenith] Extracting repository files...")
+	for _, f := range zipReader.File {
+		parts := strings.SplitN(f.Name, "/", 2)
+		if len(parts) < 2 || parts[1] == "" {
+			continue
+		}
+		relPath := parts[1]
+		targetPath := filepath.Join(destDir, filepath.FromSlash(relPath))
+
+		// Guard against Zip Slip vulnerability
+		cleanTarget := filepath.Clean(targetPath)
+		cleanDest := filepath.Clean(destDir)
+		if !strings.HasPrefix(cleanTarget, cleanDest+string(os.PathSeparator)) && cleanTarget != cleanDest {
+			continue
+		}
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(targetPath, f.Mode())
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return err
+		}
+
+		outFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func findPowerShell() (string, error) {
