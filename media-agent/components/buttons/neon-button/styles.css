@@ -1,0 +1,21 @@
+.neon-glow-btn {
+  position: relative;
+  padding: 14px 34px;
+  background: #0d0f14;
+  color: var(--accent-1, #00f3ff);
+  border: 2px solid var(--accent-1, #00f3ff);
+  border-radius: 8px;
+  font-family: var(--font-heading, inherit);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 10px var(--glow-color, rgba(0, 243, 255, 0.3));
+}
+.neon-glow-btn:hover {
+  background: var(--accent-1, #00f3ff);
+  color: #0d0f14;
+  box-shadow: 0 0 30px var(--accent-1, #00f3ff), 0 0 60px var(--glow-color, rgba(0, 243, 255, 0.6));
+}

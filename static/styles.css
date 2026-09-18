@@ -659,19 +659,452 @@ body::before {
   stroke: none !important;
 }
 
-/* attachment tray */
+/* ── Attachment Drop-up & Tray Styling ── */
+.attach-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#attach-btn {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease, background 0.15s ease;
+}
+
+#attach-btn.active {
+  color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.15);
+  transform: rotate(45deg);
+}
+
+.attach-dropup {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 0;
+  min-width: 250px;
+  background: rgba(18, 18, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 8px;
+  box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 250;
+  opacity: 0;
+  transform: translateY(12px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.attach-dropup.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+[data-theme="light"] .attach-dropup {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.attach-opt-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: none;
+  background: transparent;
+  color: var(--ink, #ffffff);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  transition: background 0.14s ease, transform 0.1s ease;
+}
+
+.attach-opt-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
+}
+
+.attach-opt-btn:active {
+  transform: scale(0.98);
+}
+
+[data-theme="light"] .attach-opt-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.attach-opt-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffffff;
+}
+
+.attach-opt-icon.camera-icon {
+  background: linear-gradient(135deg, #f43f5e 0%, #fb7185 100%);
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35);
+}
+
+.attach-opt-icon.gallery-icon {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.attach-opt-icon.doc-icon {
+  background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
+}
+
+.attach-opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attach-opt-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink, #ffffff);
+  line-height: 1.2;
+}
+
+.attach-opt-desc {
+  font-size: 0.72rem;
+  color: var(--ink-faint, rgba(255, 255, 255, 0.5));
+  line-height: 1.2;
+}
+
+[data-theme="light"] .attach-opt-desc {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+/* Attachment Tray & Badges */
 .attachment-tray {
-  display: none; flex-wrap: wrap; gap: 8px; padding: 10px 8px 8px;
+  display: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  max-height: 160px;
+  overflow-y: auto;
 }
+
 .attach-badge {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--panel); border: 1px solid var(--line-2);
-  border-radius: 10px; padding: 5px 10px; font-size: 0.8rem; color: var(--ink);
-  box-shadow: var(--shadow-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: var(--ink, #ffffff);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.15s ease, background 0.15s ease;
+  animation: badgeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.attach-badge img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; }
-.attach-badge .rm-btn { background: none; border: none; color: var(--ink-faint); cursor: pointer; padding: 0 2px; font-size: 0.9rem; }
-.attach-badge .rm-btn:hover { color: var(--fail); }
+
+@keyframes badgeIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.attach-badge:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .attach-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #18181b;
+}
+
+.attach-badge-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #000;
+}
+
+.attach-badge-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.attach-badge-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 170px;
+}
+
+.attach-badge-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--ink, #ffffff);
+}
+
+.attach-badge-meta {
+  font-size: 0.68rem;
+  color: var(--ink-faint, rgba(255, 255, 255, 0.45));
+}
+
+.attach-badge .rm-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: var(--ink-dim, rgba(255, 255, 255, 0.6));
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.1s ease;
+  margin-left: 4px;
+}
+
+.attach-badge .rm-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  transform: scale(1.1);
+}
+
+/* Interactive Camera Viewfinder Modal */
+.camera-snap-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.camera-snap-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.camera-snap-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 500px;
+  background: rgba(22, 22, 26, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.camera-snap-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.camera-snap-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.camera-snap-close {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.camera-snap-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.camera-snap-viewfinder {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #09090b;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera-snap-viewfinder video,
+.camera-snap-viewfinder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-snap-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.86rem;
+  background: #09090b;
+}
+
+.camera-snap-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.camera-snap-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.camera-snap-controls {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.camera-snap-flip-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.camera-snap-flip-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.camera-shutter-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: transparent;
+  border: 4px solid #ffffff;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease;
+}
+
+.camera-shutter-btn:hover {
+  transform: scale(1.06);
+}
+
+.camera-shutter-btn:active {
+  transform: scale(0.94);
+}
+
+.shutter-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #f43f5e;
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.5);
+}
+
+.camera-action-btn {
+  padding: 10px 22px;
+  border-radius: 14px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.camera-action-btn.retake {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.camera-action-btn.retake:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.camera-action-btn.attach {
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
+}
+
+.camera-action-btn.attach:hover {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
 
 /* ── sidebar: the daybook ──
    A drawer on every breakpoint: it slides with a soft ease instead of

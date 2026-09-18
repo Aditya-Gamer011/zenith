@@ -1,0 +1,31 @@
+{
+  "id": "comparison",
+  "name": "Side-by-Side Comparison Layout",
+  "type": "layout",
+  "tags": [
+    "comparison",
+    "before-after",
+    "legacy-modern",
+    "versus"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "competitive-analysis",
+    "before-after",
+    "architecture-shift"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "High-contrast dual column comparison contrasting legacy frictions against modern sovereign capabilities.",
+  "components": [
+    "comparison-column",
+    "contrast-badge"
+  ],
+  "motion": [
+    "slide-up"
+  ],
+  "default_props": {}
+}

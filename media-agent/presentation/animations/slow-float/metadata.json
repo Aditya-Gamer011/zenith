@@ -1,0 +1,23 @@
+{
+  "id": "slow-float",
+  "name": "Ambient Slow Float Motion",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "float",
+    "ambient",
+    "3d"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "3d"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic"
+  ],
+  "description": "Subtle continuous floating oscillation imparting lifelike presence to 3D hero assets.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

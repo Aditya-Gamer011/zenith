@@ -1,0 +1,27 @@
+{
+  "id": "bar-chart",
+  "name": "Native Column / Bar Chart",
+  "type": "data",
+  "tags": [
+    "chart",
+    "bar",
+    "column",
+    "growth",
+    "revenue",
+    "data"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "data-story",
+    "financials"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Editable native PowerPoint column chart rendered with theme palette accents.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -147,6 +148,18 @@ CREATE TABLE IF NOT EXISTS org_blackboard (
     content TEXT NOT NULL,
     metadata TEXT DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    theme TEXT DEFAULT 'editorial_slate',
+    data_json TEXT NOT NULL,
+    file_path TEXT DEFAULT '',
+    web_url TEXT DEFAULT '',
+    created_at REAL,
+    updated_at REAL
 );
 """
 
@@ -492,3 +505,208 @@ def blackboard_summary(limit: int = 5) -> str:
     for f in findings:
         lines.append(f"- [{f.get('created_at', '')}] **{f.get('department', 'Agent')}** ({f.get('topic', '')}): {f.get('content', '')}")
     return "\n".join(lines)
+
+
+# ── Artifact Persistence & Versioning ───────────────────────────────────────
+
+def save_artifact(
+    artifact_id: str,
+    artifact_type: str,
+    title: str,
+    theme: str,
+    data_json: str | dict | list,
+    file_path: str = "",
+    web_url: str = "",
+) -> None:
+    """Save or upsert a structured artifact (presentation, document, etc.)."""
+    raw_json = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
+    now = time.time()
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO artifacts (id, type, title, theme, data_json, file_path, web_url, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                   title = excluded.title,
+                   theme = excluded.theme,
+                   data_json = excluded.data_json,
+                   file_path = CASE WHEN excluded.file_path != '' THEN excluded.file_path ELSE artifacts.file_path END,
+                   web_url = CASE WHEN excluded.web_url != '' THEN excluded.web_url ELSE artifacts.web_url END,
+                   updated_at = excluded.updated_at
+            """,
+            (artifact_id, artifact_type, title, theme, raw_json, file_path, web_url, now, now),
+        )
+        conn.commit()
+    set_last_generated_artifact(artifact_id)
+
+
+_LAST_GENERATED_ARTIFACT_ID: str = ""
+
+
+def set_last_generated_artifact(artifact_id: str) -> None:
+    """Track the most recently generated artifact in memory."""
+    global _LAST_GENERATED_ARTIFACT_ID
+    _LAST_GENERATED_ARTIFACT_ID = artifact_id
+
+
+def get_last_generated_artifact_id() -> str:
+    """Return the ID of the most recently generated artifact."""
+    global _LAST_GENERATED_ARTIFACT_ID
+    return _LAST_GENERATED_ARTIFACT_ID
+
+
+def get_artifact(artifact_id: str) -> Optional[dict[str, Any]]:
+    """Retrieve an artifact by ID, decoding its structured JSON payload."""
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["data"] = json.loads(d.get("data_json") or "{}")
+        except Exception:
+            d["data"] = {}
+        return d
+
+
+def list_artifacts(artifact_type: str = "", limit: int = 20) -> list[dict[str, Any]]:
+    """List recent artifacts filtered optionally by type ('presentation', 'document')."""
+    sql = "SELECT id, type, title, theme, file_path, web_url, created_at, updated_at FROM artifacts"
+    params: list[Any] = []
+    if artifact_type.strip():
+        sql += " WHERE LOWER(type) = ?"
+        params.append(artifact_type.strip().lower())
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 100)))
+
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def find_artifact(query: str, artifact_type: str = "") -> Optional[dict[str, Any]]:
+    """Smart case-insensitive artifact search by exact ID, filename, keywords, or recency.
+
+    Prevents sending the wrong presentation/file by scoring candidate matches
+    and requiring verifiable keyword presence or explicit recency.
+    """
+    import re
+    query = (query or "").strip().strip("'\"")
+    clean_type = artifact_type.strip().lower()
+
+    # 1. Check if query is an exact artifact ID
+    if query:
+        art = get_artifact(query)
+        if art:
+            if not clean_type or art.get("type", "").lower() == clean_type:
+                return art
+
+    # 2. Check last generated artifact if query is generic
+    generic_words = {
+        "presentation", "presentation.pptx", "deck", "slides", "ppt", "latest", "recent",
+        "document", "document.pdf", "document.docx", "report", "the presentation", "the deck",
+        "the document", "file", "attachment", "latest.pptx", "latest.pdf",
+    }
+    is_generic = not query or query.lower() in generic_words
+    now = time.time()
+
+    def is_usable_artifact(a: dict[str, Any], max_age: float = 7200) -> bool:
+        if not a:
+            return False
+        aid = a.get("id", "").lower()
+        if aid.startswith("test_") and query != a.get("id"):
+            return False
+        fp = a.get("file_path", "")
+        if not fp or not Path(fp).exists():
+            return False
+        if "pytest" in fp.lower():
+            return False
+        if max_age and (now - a.get("updated_at", 0) > max_age):
+            return False
+        return True
+
+    if is_generic:
+        last_id = get_last_generated_artifact_id()
+        if last_id:
+            last_art = get_artifact(last_id)
+            if last_art and (not clean_type or last_art.get("type", "").lower() == clean_type):
+                if is_usable_artifact(last_art, max_age=7200):
+                    return last_art
+
+    # 3. Retrieve all artifacts of matching type (or all artifacts) from DB
+    with _connect() as conn:
+        sql = "SELECT * FROM artifacts"
+        params: list[Any] = []
+        if clean_type:
+            sql += " WHERE LOWER(type) = ?"
+            params.append(clean_type)
+        sql += " ORDER BY updated_at DESC"
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    if not rows:
+        return None
+
+    # Decode JSON payload
+    for r in rows:
+        try:
+            r["data"] = json.loads(r.get("data_json") or "{}")
+        except Exception:
+            r["data"] = {}
+
+    # If query is generic, pick the newest valid artifact updated within the last 2 hours
+    if is_generic:
+        for r in rows:
+            if is_usable_artifact(r, max_age=7200):
+                return r
+        return None
+
+    # 4. Keyword / fuzzy scoring search
+    # Strip extensions and prefixes
+    cleaned_query = query
+    for ext in (".pptx", ".pdf", ".docx", ".xlsx", ".csv", ".json", ".html"):
+        if cleaned_query.lower().endswith(ext):
+            cleaned_query = cleaned_query[:-len(ext)]
+    for prefix in ("presentation_", "deck_", "doc_", "report_"):
+        if cleaned_query.lower().startswith(prefix):
+            cleaned_query = cleaned_query[len(prefix):]
+
+    # Extract distinct search tokens (length >= 3, skipping stop words)
+    raw_tokens = re.split(r'[-_\s,.]+', cleaned_query)
+    stop_words = {"the", "and", "for", "with", "presentation", "deck", "slides", "ppt", "document", "report", "file"}
+    tokens = [t.lower() for t in raw_tokens if len(t) >= 3 and t.lower() not in stop_words]
+
+    if not tokens:
+        # Single short token or exact substring match on file_path or title
+        q_lower = query.lower()
+        for r in rows:
+            if q_lower in r.get("id", "").lower() or q_lower in r.get("title", "").lower() or q_lower in Path(r.get("file_path", "")).name.lower():
+                return r
+        return None
+
+    scored_candidates = []
+    for r in rows:
+        fp = r.get("file_path", "")
+        title_lower = r.get("title", "").lower()
+        id_lower = r.get("id", "").lower()
+        fname_lower = Path(fp).name.lower()
+        combined = f"{title_lower} {id_lower} {fname_lower}"
+
+        matched_tokens = sum(1 for t in tokens if t in combined)
+        if matched_tokens > 0:
+            score = matched_tokens * 10
+            # Strong bonus if ALL tokens matched
+            if matched_tokens == len(tokens):
+                score += 50
+            # Extra bonus if title contains the exact full phrase
+            if cleaned_query.lower() in title_lower:
+                score += 40
+            # Extra bonus if file exists on disk
+            fp = r.get("file_path", "")
+            if fp and Path(fp).exists():
+                score += 20
+            scored_candidates.append((score, r.get("updated_at", 0), r))
+
+    if scored_candidates:
+        scored_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return scored_candidates[0][2]
+
+    return None

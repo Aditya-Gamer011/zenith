@@ -1,0 +1,23 @@
+{
+  "id": "glow",
+  "name": "Radial Conic Glow",
+  "type": "effect",
+  "tags": [
+    "glow",
+    "aura",
+    "ambient",
+    "neon"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "cta"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic"
+  ],
+  "description": "Radial neon aura adding luminous ambient intensity behind focal visual assets.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

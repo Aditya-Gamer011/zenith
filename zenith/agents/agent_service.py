@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from ..core.config import settings
 from ..core import provider
 from ..core import tools as tool_reg
 from ..memory import store
@@ -28,6 +29,7 @@ log = logging.getLogger("zenith.agents")
 # Inter-agent execution context variables
 current_agent_depth: ContextVar[int] = ContextVar("current_agent_depth", default=0)
 current_agent_name: ContextVar[str] = ContextVar("current_agent_name", default="")
+current_agent_chain: ContextVar[tuple[str, ...]] = ContextVar("current_agent_chain", default=())
 
 COLLABORATION_TOOLS = ["ask_specialist", "share_finding", "query_findings"]
 
@@ -61,13 +63,23 @@ DEPARTMENTS: dict[str, dict[str, Any]] = {
             "correspondence, reminders, and inboxes on behalf of the user. "
             "Always inspect and search incoming emails carefully before drafting responses. "
             "Maintain a polite, professional, and clear tone matching the user's intent. "
-            "Never send an email without having drafted or confirmed it first. "
-            "Conclude with a clear, concise summary of what was sent, drafted, or retrieved."
+            "CRITICAL OUTBOUND SENDER DIRECTIVE: "
+            f"All outbound emails are transmitted exclusively via Resend from Zenith's assigned system address ({settings.resend_from}). "
+            "NEVER attempt to send emails from or claim to send from the user's personal email address! "
+            "The user's personal email is only for receiving notifications or reading incoming mail. "
+            "CRITICAL FILE ATTACHMENT & ZERO-DOMAIN POLICY: "
+            "Zenith is an open-source, local-first system without default public domains or CDN hosting. "
+            "External email recipients CANNOT open local URLs (like localhost:8005, /presentation/..., /api/files/download?...). "
+            "NEVER fabricate domain names (e.g. 'app.zenith.os', 'zenith.local', etc.) or put local web links in outbound emails! "
+            "When sending presentations, documents, spreadsheets, PDFs, or generated media, ALWAYS attach the file "
+            "directly using the `attachment_path` parameter of `email_send`! Clearly state in the email body that the file is attached. "
+            "Use `query_findings` or `list_generated_files` if you need to discover the exact filesystem path of a generated file."
         ),
         "tools": [
             "email_search", "email_read", "email_draft", "email_send", "email_reminder",
             "cf_email_routing", "cf_email_status", "mailbox_create", "mailbox_read",
             "mailbox_messages", "mailbox_delete",
+            "query_findings", "list_generated_files",
         ],
     },
     "coding": {
@@ -101,7 +113,7 @@ DEPARTMENTS: dict[str, dict[str, Any]] = {
             "analyze_architecture", "get_hierarchical_context",
             "agent_submit", "agent_status", "agent_output", "agent_followup", "agent_artifacts",
             "agent_cancel", "worker_control", "worker_status", "generate_code", "read_file",
-            "write_file", "modify_file", "list_dir", "analyze_file", "list_generated_files",
+            "write_file", "modify_file", "list_dir", "analyze_file", "read_presentation", "read_spreadsheet", "list_generated_files",
             "delete_generated_file", "shell", "get_command_history", "git_status", "git_diff",
             "git_commit", "git_branch", "git_log", "gh_whoami", "gh_list_repos", "gh_repo_status",
             "gh_issues", "gh_pulls", "gh_create_issue", "gh_create_pr", "gh_create_repo",
@@ -176,15 +188,25 @@ DEPARTMENTS: dict[str, dict[str, Any]] = {
         "tools": [
             "calendar", "todo", "notes", "get_weather", "time_now", "activity_recall",
             "activity_summary", "mem0_remember", "mem0_recall", "mem0_delete",
+            "analyze_file", "read_presentation", "read_spreadsheet",
+            "generate_presentation", "preview_presentation", "generate_pdf", "generate_docx",
         ],
     },
     "creative": {
         "name": "Creative & Media Studio Lead",
         "department": "Design & Media Studio",
-        "description": "Master studio for multimedia processing, audio/video editing, speech synthesis, YouTube/web media downloads, collages, memes, PPTX decks, and CDN asset pipelines.",
+        "description": "Master studio for multimedia processing, audio/video editing, speech synthesis, visual vocabulary component registry (Uiverse, Aceternity UI, Magic UI, Three.js, GSAP, Zenith), landing page composition, PPTX decks, and CDN asset pipelines.",
         "system": (
-            "You are Zenith's Creative & Media Studio Lead. You are an elite multimedia engineer and creative director. "
-            "You create comprehensive slide presentations (PPTX), documents, charts, inspect Canva and Figma designs, "
+            "You are Zenith's Creative & Media Studio Lead and Master Creative Director. You are an elite multimedia engineer and visual designer. "
+            "You command Zenith's multi-library visual vocabulary component registry (Uiverse Galaxy 3,800+ elements, Aceternity UI, Magic UI, "
+            "Three.js WebGL 3D, GSAP motion primitives, and Zenith proprietary components). "
+            "When asked for cool CTAs, buttons, cards, backgrounds, animations, or landing pages, NEVER invent generic AI slop markup. "
+            "Instead, reason over your visual vocabulary: "
+            "1. Determine intent, motion intensity (1 to 5), and target theme (editorial_slate, boba_bash, cyberpunk_neon, swiss_clean, nordic_navy, executive_mono, terracotta_warm). "
+            "2. Retrieve best-fitting primitives with `component_search` and `component_get`. "
+            "3. Adapt components to current theme colors with `component_adapt`. "
+            "4. Synthesize complete interactive responsive sites with `component_compose_page`. "
+            "You also create comprehensive slide presentations (PPTX), documents, charts, inspect Canva and Figma designs, "
             "edit and analyze images, generate studio-grade neural speech voiceovers (text_to_speech), transcode, trim, "
             "and merge audio/video clips with FFmpeg (convert_media, trim_media, merge_audio_video, extract_frames, compress_media), "
             "produce animated waveform video audiograms (create_audiogram), generate video slideshow reels with audio (create_slideshow), "
@@ -192,15 +214,19 @@ DEPARTMENTS: dict[str, dict[str, Any]] = {
             "burn hardcoded subtitles into videos (burn_subtitles), apply photographic aesthetic filters and cinematic color grading (apply_image_filter), "
             "download and ingest media from YouTube and web URLs (download_web_audio, download_web_video, web_media_info, youtube_transcript), "
             "create aesthetic photo collages, memes, and animated GIFs, extract color palettes, and manage Cloudflare R2 / CDN media uploads. "
-            "Always produce visually compelling, high-quality deliverables with direct web player links and image previews."
+            "Always produce visually compelling, high-quality deliverables with direct web player links, live site previews, and image previews."
         ),
         "tools": [
+            "component_search", "component_get", "component_adapt", "component_compose_page", "component_catalog_summary",
             "media_info", "convert_media", "trim_media", "extract_frames", "merge_audio_video",
             "compress_media", "text_to_speech", "download_web_audio", "download_web_video",
             "web_media_info", "create_collage", "generate_meme", "extract_palette", "create_animated_gif",
             "create_audiogram", "create_slideshow", "normalize_audio", "overlay_media",
             "apply_image_filter", "burn_subtitles",
+            "generate_presentation", "edit_presentation", "preview_presentation",
+            "presentation_plan", "presentation_search_components", "presentation_critique", "list_design_themes",
             "generate_pptx", "list_pptx_templates", "list_pptx_themes", "search_presentation_photos",
+            "read_presentation", "read_spreadsheet", "analyze_file",
             "generate_pdf", "generate_docx", "generate_csv", "generate_xlsx", "generate_json",
             "generate_chart", "canva_get_profile", "canva_list_designs", "canva_create_design",
             "canva_export_design", "figma_get_user", "figma_read_file", "figma_inspect_nodes",
@@ -354,6 +380,13 @@ class AgentService:
             }
 
         resolved_name = prof["id"]
+        caller_chain = current_agent_chain.get()
+        if resolved_name in caller_chain:
+            return {
+                "ok": False,
+                "error": f"Circular consultation blocked: department '{resolved_name}' is already in the active consultation chain ({' -> '.join(caller_chain)}). Please proceed with your own toolset.",
+            }
+
         run = AgentRun(
             id=uuid.uuid4().hex[:8],
             name=resolved_name,
@@ -377,6 +410,14 @@ class AgentService:
             })
 
         await self._execute(run, emit=emit)
+
+        # Auto-publish completed missions to the organizational blackboard
+        if run.status == "done" and run.result:
+            try:
+                topic = f"Completed Mission: {task[:70]}"
+                store.blackboard_publish(department=resolved_name, topic=topic, content=run.result)
+            except Exception as b_exc:
+                log.debug("Auto-blackboard publish failed: %s", b_exc)
 
         if emit:
             await emit({
@@ -473,11 +514,19 @@ class AgentService:
         run.status = "running"
         depth_token = current_agent_depth.set(run.depth)
         name_token = current_agent_name.set(run.name)
+        caller_chain = current_agent_chain.get()
+        chain_token = current_agent_chain.set(caller_chain + (run.name,))
         try:
             prof = self.get_agent_profile(run.name)
             system = prof["system"] if prof else "Accomplish the assigned task autonomously."
             if run.context:
                 system += f"\n\nContext from Zenith Orchestrator:\n{run.context}"
+
+            try:
+                from ..tools.host_paths import format_host_paths_summary
+                system += f"\n\n{format_host_paths_summary()}"
+            except Exception:
+                pass
 
             system += (
                 "\n\n--- EXECUTIVE REPORTING PROTOCOL ---\n"
@@ -497,6 +546,7 @@ class AgentService:
         finally:
             current_agent_depth.reset(depth_token)
             current_agent_name.reset(name_token)
+            current_agent_chain.reset(chain_token)
             run.finished_at = time.time()
         return run.result
 

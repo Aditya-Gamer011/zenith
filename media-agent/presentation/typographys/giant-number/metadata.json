@@ -1,0 +1,25 @@
+{
+  "id": "giant-number",
+  "name": "Giant Visual Metric Number",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "giant-number",
+    "stats",
+    "delta"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "data-story",
+    "stat-hero"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Super-bold 68pt+ typographic numeral conveying dramatic growth or scale.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

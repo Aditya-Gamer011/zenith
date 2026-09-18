@@ -1,0 +1,27 @@
+{
+  "id": "network-structure",
+  "name": "Node Mesh Network Structure",
+  "type": "3d",
+  "tags": [
+    "3d",
+    "network",
+    "mesh",
+    "nodes",
+    "graph",
+    "ai"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "split-screen",
+    "bento"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Three-dimensional constellation lattice of interconnected knowledge graph nodes.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

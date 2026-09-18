@@ -1,0 +1,37 @@
+{
+  "id": "browser-mockup",
+  "name": "macOS Safari Window Mockup",
+  "category": "mockup",
+  "source": "magicui",
+  "tags": [
+    "mockup",
+    "safari",
+    "browser",
+    "macos",
+    "product"
+  ],
+  "framework": "react",
+  "motion": "tilt-float",
+  "intensity": 2,
+  "best_for": [
+    "product",
+    "features",
+    "showcase"
+  ],
+  "description": "Photorealistic macOS Safari browser frame with red/yellow/green traffic controls, glass URL pill, and window shadow.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const BrowserMockup: React.FC<{ url?: string; children?: React.ReactNode }> = ({\n  url = \"zenith.local/dashboard\",\n  children,\n}) => {\n  return (\n    <div className=\"w-full rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 shadow-2xl\">\n      <div className=\"flex items-center gap-2 px-4 py-3 bg-neutral-900/80 border-b border-neutral-800 backdrop-blur-md\">\n        <div className=\"flex gap-1.5\">\n          <div className=\"w-3 h-3 rounded-full bg-red-500/80\" />\n          <div className=\"w-3 h-3 rounded-full bg-yellow-500/80\" />\n          <div className=\"w-3 h-3 rounded-full bg-green-500/80\" />\n        </div>\n        <div className=\"mx-auto px-6 py-1 rounded-md bg-neutral-950/70 border border-neutral-800 text-xs font-mono text-neutral-400\">\n          https://{url}\n        </div>\n      </div>\n      <div className=\"p-6\">{children}</div>\n    </div>\n  );\n};\n",
+    "css": ".browser-mockup {\n  width: 100%;\n  border-radius: 14px;\n  overflow: hidden;\n  border: 1px solid var(--border-color, #2a2e37);\n  background: var(--bg-color, #0d0f12);\n  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);\n}\n.browser-header {\n  display: flex;\n  align-items: center;\n  padding: 12px 18px;\n  background: var(--card-bg, #181b20);\n  border-bottom: 1px solid var(--border-color, #2a2e37);\n}\n.browser-dots {\n  display: flex;\n  gap: 8px;\n}\n.browser-dot {\n  width: 11px;\n  height: 11px;\n  border-radius: 50%;\n}\n.browser-dot.red { background: #ff5f56; }\n.browser-dot.yellow { background: #ffbd2e; }\n.browser-dot.green { background: #27c93f; }\n.browser-url-pill {\n  margin: 0 auto;\n  padding: 4px 20px;\n  border-radius: 6px;\n  background: rgba(0, 0, 0, 0.4);\n  border: 1px solid var(--border-color, #2a2e37);\n  font-family: var(--font-mono, monospace);\n  font-size: 0.78rem;\n  color: var(--muted-color, #8e95a2);\n}\n",
+    "html": "<div class=\"browser-mockup\">\n  <div class=\"browser-header\">\n    <div class=\"browser-dots\">\n      <div class=\"browser-dot red\"></div>\n      <div class=\"browser-dot yellow\"></div>\n      <div class=\"browser-dot green\"></div>\n    </div>\n    <div class=\"browser-url-pill\">zenith.ai/autonomous</div>\n  </div>\n  <div style=\"padding: 24px;\">App Preview Content</div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

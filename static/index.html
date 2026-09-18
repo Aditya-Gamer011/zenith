@@ -388,17 +388,11 @@
         <button class="hdr-btn" id="mem-btn" title="Agenda &amp; notes" aria-label="Agenda">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>
         </button>
-        <button class="hdr-btn" id="voice-btn" title="Voice · hold Space to talk" aria-label="Voice">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-        </button>
         <button class="hdr-btn" id="camera-btn" title="Camera · live vision and gesture tracking" aria-label="Camera">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
         <button class="hdr-btn" id="context-btn" title="Operating Layer · Screen, Activity &amp; Context" aria-label="Context &amp; Activity">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5l3 7 4-14 3 7h5"/></svg>
-        </button>
-        <button class="hdr-btn" id="agents-btn" title="Organization &amp; Multi-Agent Roster" aria-label="Agents Roster">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </button>
         <button class="hdr-btn" id="term-btn" title="Execution log" aria-label="Logs">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
@@ -510,9 +504,62 @@
         <div class="composer">
           <div class="attachment-tray" id="attachment-tray" style="display:none"></div>
           <div class="composer-row">
-            <button class="cbtn" id="attach-btn" title="Attach file or image" aria-label="Attach">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            </button>
+            <div class="attach-wrapper" id="attach-wrapper">
+              <button class="cbtn" id="attach-btn" type="button" title="Attach files, photos or documents" aria-label="Attach" aria-haspopup="menu" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+
+              <!-- Attachment Drop-up Menu -->
+              <div class="attach-dropup" id="attach-dropup" role="menu" aria-label="Attachment options">
+                <button type="button" class="attach-opt-btn" id="attach-opt-camera" role="menuitem">
+                  <div class="attach-opt-icon camera-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                  </div>
+                  <div class="attach-opt-text">
+                    <span class="attach-opt-title">Camera</span>
+                    <span class="attach-opt-desc">Take a photo</span>
+                  </div>
+                </button>
+
+                <button type="button" class="attach-opt-btn" id="attach-opt-gallery" role="menuitem">
+                  <div class="attach-opt-icon gallery-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <div class="attach-opt-text">
+                    <span class="attach-opt-title">Gallery</span>
+                    <span class="attach-opt-desc">Photos &amp; screenshots</span>
+                  </div>
+                </button>
+
+                <button type="button" class="attach-opt-btn" id="attach-opt-doc" role="menuitem">
+                  <div class="attach-opt-icon doc-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                  </div>
+                  <div class="attach-opt-text">
+                    <span class="attach-opt-title">Documents</span>
+                    <span class="attach-opt-desc">PDF, code, spreadsheets, text</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Specific category file inputs -->
+            <input type="file" id="attach-input-camera" accept="image/*" capture="environment" hidden />
+            <input type="file" id="attach-input-gallery" accept="image/*" multiple hidden />
+            <input type="file" id="attach-input-doc" accept=".pdf,.doc,.docx,.txt,.md,.json,.csv,.xlsx,.xls,.py,.js,.ts,.tsx,.jsx,.html,.css,.yaml,.yml,.xml,.sh,.sql,.log,text/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden />
             <input type="file" id="file-input" hidden multiple />
             <textarea id="inp" rows="1" placeholder="Message Zenith…" autocomplete="off" autofocus></textarea>
             <button class="cbtn" id="mic-btn" title="Voice … hold space to talk" aria-label="Voice">
@@ -974,10 +1021,52 @@
   </div>
 </div>
 
+<!-- Camera Snap Modal (Interactive Viewfinder) -->
+<div class="camera-snap-modal" id="camera-snap-modal" style="display:none" role="dialog" aria-modal="true" aria-label="Take Photo">
+  <div class="camera-snap-backdrop" id="camera-snap-backdrop"></div>
+  <div class="camera-snap-card">
+    <div class="camera-snap-hdr">
+      <div class="camera-snap-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        <span>Take Photo</span>
+      </div>
+      <button type="button" class="camera-snap-close" id="camera-snap-close" title="Close camera">✕</button>
+    </div>
+    
+    <div class="camera-snap-viewfinder">
+      <video id="camera-snap-video" autoplay playsinline muted></video>
+      <img id="camera-snap-preview" alt="Snapshot Preview" style="display:none" />
+      <canvas id="camera-snap-canvas" style="display:none"></canvas>
+      <div class="camera-snap-loading" id="camera-snap-loading">
+        <span class="camera-snap-spinner"></span>
+        <span>Connecting camera…</span>
+      </div>
+    </div>
+
+    <div class="camera-snap-footer">
+      <div class="camera-snap-controls" id="camera-snap-live-controls">
+        <button type="button" class="camera-snap-flip-btn" id="camera-snap-flip" title="Switch camera" style="display:none">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        </button>
+        <button type="button" class="camera-shutter-btn" id="camera-shutter-btn" title="Snap photo">
+          <div class="shutter-inner"></div>
+        </button>
+      </div>
+      <div class="camera-snap-controls" id="camera-snap-review-controls" style="display:none">
+        <button type="button" class="camera-action-btn retake" id="camera-snap-retake">Retake</button>
+        <button type="button" class="camera-action-btn attach" id="camera-snap-confirm">Attach Photo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast notifications container -->
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/liquid-glass-shader.js?v=73"></script>
-<script src="/static/app.js?v=73"></script>
+<script src="/static/app.js?v=79"></script>
 </body>
 </html>

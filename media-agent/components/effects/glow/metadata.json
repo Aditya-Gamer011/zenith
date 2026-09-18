@@ -1,0 +1,37 @@
+{
+  "id": "glow",
+  "name": "Conic Ambient Aura Glow",
+  "category": "effects",
+  "source": "magicui",
+  "tags": [
+    "glow",
+    "aura",
+    "ambient",
+    "conic",
+    "backlight"
+  ],
+  "framework": "html",
+  "motion": "continuous-rotate",
+  "intensity": 3,
+  "best_for": [
+    "hero",
+    "cards",
+    "highlight"
+  ],
+  "description": "Continuous revolving conic ambient aura casting colorful soft glow on surrounding elements.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const GlowBacklight: React.FC<{ children?: React.ReactNode }> = ({ children }) => (\n  <div className=\"relative group\">\n    <div className=\"absolute -inset-1 bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-2xl blur-lg opacity-40 group-hover:opacity-80 transition duration-500\" />\n    <div className=\"relative\">{children}</div>\n  </div>\n);\n",
+    "css": ".glow-aura-wrap {\n  position: relative;\n}\n.glow-aura-layer {\n  position: absolute;\n  inset: -12px;\n  border-radius: 24px;\n  background: conic-gradient(from 0deg at 50% 50%, var(--accent-1, #d4a373) 0deg, var(--accent-2, #3b82f6) 180deg, var(--accent-1, #d4a373) 360deg);\n  filter: blur(28px);\n  opacity: 0.35;\n  z-index: 0;\n  animation: glow-spin 10s linear infinite;\n}\n@keyframes glow-spin {\n  to { transform: rotate(360deg); }\n}\n",
+    "html": "<div class=\"glow-aura-wrap\">\n  <div class=\"glow-aura-layer\"></div>\n  <div style=\"position: relative; z-index: 1;\">Card Content Here</div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

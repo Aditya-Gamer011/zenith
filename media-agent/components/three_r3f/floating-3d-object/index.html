@@ -1,0 +1,29 @@
+<div class="three-viewport" id="three-torus-container"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  (function() {
+    const container = document.getElementById('three-torus-container');
+    if (!container || !window.THREE) return;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+    const geo = new THREE.TorusKnotGeometry(1.6, 0.45, 120, 20);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.15, metalness: 0.9 });
+    const mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+    const light = new THREE.PointLight(0xffffff, 2, 100);
+    light.position.set(5, 5, 5);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x222233));
+    camera.position.z = 4.5;
+    function loop() {
+      mesh.rotation.x += 0.006;
+      mesh.rotation.y += 0.009;
+      renderer.render(scene, camera);
+      requestAnimationFrame(loop);
+    }
+    loop();
+  })();
+</script>

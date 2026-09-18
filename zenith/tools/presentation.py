@@ -493,13 +493,16 @@ async def generate_pptx(
         log.error("python-pptx import error: %s", e)
         return f"python-pptx library error: {e}"
 
-    # Use a preset template ONLY when the caller didn't provide real slide
-    # content. Otherwise the template would REPLACE the requested topic's slides —
-    # e.g. asking for "lions" with template="tech_overview" filled the deck with
-    # "Core Performance SLAs & Metrics" and wiped the lion slides. The model may
-    # pass a template name out of habit; explicit slides always win.
-    if template and template.lower() in PRESET_TEMPLATES and not slides:
-        slides = PRESET_TEMPLATES[template.lower()]
+    if not slides:
+        if template and template.lower() in PRESET_TEMPLATES:
+            slides = PRESET_TEMPLATES[template.lower()]
+        else:
+            try:
+                from zenith.presentation.pipeline import generate_topical_slide_structure
+                slides = generate_topical_slide_structure(title=title, topic=title, subtitle=subtitle)
+            except Exception as e:
+                log.debug("Fallback to basic slides structure: %s", e)
+                slides = [{"title": title, "layout": "cards_grid", "subtitle": subtitle}]
 
     if isinstance(slides, str):
         try:
@@ -510,7 +513,7 @@ async def generate_pptx(
                 line = line.strip()
                 if line.startswith("# ") or line.endswith(":"):
                     parsed_slides.append({"title": line.lstrip("#").rstrip(":").strip(), "layout": "cards_grid", "cards": [{"title": "Key Insight", "points": [line]}]})
-            slides = parsed_slides or [{"title": title, "layout": "hero_title", "subtitle": subtitle}]
+            slides = parsed_slides or [{"title": title, "layout": "cards_grid", "subtitle": subtitle}]
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -518,8 +521,19 @@ async def generate_pptx(
 
     blank_layout = prs.slide_layouts[6]
 
-    # Resolve Theme Palette
-    palette = COLOR_PALETTES.get((theme or "dark").lower(), COLOR_PALETTES["dark"])
+    # Resolve Theme Palette from Design System
+    from .design_system import resolve_theme
+    t_cfg = resolve_theme(theme)
+    tc = t_cfg["colors"]
+    palette = {
+        "bg": tc["bg_rgb"],
+        "card": tc["card_rgb"],
+        "border": tc["border_rgb"],
+        "title": tc["text_rgb"],
+        "muted": tc["muted_rgb"],
+        "accent1": tc["accent1_rgb"],
+        "accent2": tc["accent2_rgb"],
+    }
     BG_COLOR = RGBColor(*palette["bg"])
     CARD_BG = RGBColor(*palette["card"])
     BORDER_COLOR = RGBColor(*palette["border"])
@@ -627,9 +641,28 @@ async def generate_pptx(
         c_slide = prs.slides.add_slide(blank_layout)
         set_slide_background(c_slide)
         _apply_slide_transition(c_slide, transition)
+
+        # Speaker notes injection
+        notes_text = str(slide_data.get("notes") or slide_data.get("speaker_notes") or "")
+        if notes_text:
+            try:
+                c_slide.notes_slide.notes_text_frame.text = notes_text
+            except Exception:
+                pass
+
         stitle = slide_data.get("title", f"Slide {idx + 1}")
         DEFAULT_LAYOUT_CYCLE = ["photo_hero", "split_hero", "stat_hero", "chart_hero", "cards_grid", "timeline"]
-        layout_type = (slide_data.get("layout") or DEFAULT_LAYOUT_CYCLE[idx % len(DEFAULT_LAYOUT_CYCLE)]).lower()
+        layout_type = (slide_data.get("layout") or DEFAULT_LAYOUT_CYCLE[idx % len(DEFAULT_LAYOUT_CYCLE)]).lower().replace("-", "_")
+        if layout_type in ("cinematic_hero", "hero_title", "hero"):
+            layout_type = "split_hero"
+        elif layout_type in ("split_screen", "magazine", "editorial"):
+            layout_type = "split_hero"
+        elif layout_type in ("data_story", "metrics"):
+            layout_type = "stat_hero"
+        elif layout_type in ("bento", "cards"):
+            layout_type = "cards_grid"
+        elif layout_type in ("roadmap", "process_steps", "workflow"):
+            layout_type = "timeline"
         bullets = slide_data.get("bullets", [])
         items = slide_data.get("items", []) or slide_data.get("cards", [])
         img_query = slide_data.get("image_query") or slide_data.get("query") or slide_data.get("photo") or stitle or title
@@ -932,10 +965,23 @@ async def generate_pptx(
 
         # --- PRIMITIVE 4: COMPARISON ---
         elif layout_type in ("comparison", "vs") or slide_data.get("columns"):
-            cols = slide_data.get("columns") or [
+            raw_cols = slide_data.get("columns") or [
                 {"title": "Option A", "points": bullets[:len(bullets)//2 or 1]},
                 {"title": "Option B", "points": bullets[len(bullets)//2 or 1:]}
             ]
+            rows_data = slide_data.get("rows") or []
+            cols = []
+            for i, c in enumerate(raw_cols):
+                if isinstance(c, str):
+                    c_points = [r[i] for r in rows_data if isinstance(r, (list, tuple)) and len(r) > i]
+                    if not c_points and bullets:
+                        c_points = [b for j, b in enumerate(bullets) if j % len(raw_cols) == i]
+                    cols.append({"title": c, "points": c_points})
+                elif isinstance(c, dict):
+                    cols.append(c)
+                else:
+                    cols.append({"title": str(c), "points": []})
+
             count = min(len(cols), 3)
             card_width = (11.733 - (0.4 * (count - 1))) / count
 
@@ -1029,9 +1075,100 @@ async def generate_pptx(
                 dp2.font.color.rgb = TEXT_MUTED
                 dp2.space_before = Pt(14)
 
+        # --- PRIMITIVE: COMPARISON ---
+        elif layout_type in ("comparison", "compare", "vs"):
+            cols = slide_data.get("columns") or ["Conventional Standards", f"Modern Advanced {title}"]
+            rows = slide_data.get("rows") or []
+            c_width = 5.6
+            for c_i, col_name in enumerate(cols[:2]):
+                c_left = 0.8 + c_i * 6.0
+                card = c_slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(c_left), Inches(1.7), Inches(c_width), Inches(4.8))
+                card.fill.solid()
+                card.fill.fore_color.rgb = CARD_BG
+                card.line.color.rgb = ACCENT_CYAN if c_i == 1 else BORDER_COLOR
+
+                ctb = c_slide.shapes.add_textbox(Inches(c_left + 0.3), Inches(2.0), Inches(c_width - 0.6), Inches(4.2))
+                ctf = ctb.text_frame
+                ctf.word_wrap = True
+                cp0 = ctf.paragraphs[0]
+                cp0.text = str(col_name)
+                cp0.font.size = Pt(20)
+                cp0.font.bold = True
+                cp0.font.color.rgb = ACCENT_PURPLE if c_i == 1 else TITLE_COLOR
+
+                for r_item in rows:
+                    cp = ctf.add_paragraph()
+                    val = r_item[c_i] if isinstance(r_item, (list, tuple)) and len(r_item) > c_i else str(r_item)
+                    cp.text = f"• {val}"
+                    cp.font.size = Pt(13)
+                    cp.font.color.rgb = TEXT_MUTED
+                    cp.space_before = Pt(8)
+
+        # --- PRIMITIVE: CLOSING / SUMMARY ---
+        elif layout_type in ("closing", "conclusion", "summary"):
+            c_card = c_slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.5), Inches(1.8), Inches(10.33), Inches(4.5))
+            c_card.fill.solid()
+            c_card.fill.fore_color.rgb = CARD_BG
+            c_card.line.color.rgb = BORDER_COLOR
+
+            ctb = c_slide.shapes.add_textbox(Inches(2.0), Inches(2.2), Inches(9.33), Inches(3.8))
+            ctf = ctb.text_frame
+            ctf.word_wrap = True
+            cp0 = ctf.paragraphs[0]
+            cp0.text = slide_data.get("subtitle") or f"Key Takeaways & Strategic Horizons for {title}"
+            cp0.font.size = Pt(22)
+            cp0.font.bold = True
+            cp0.font.color.rgb = ACCENT_CYAN
+
+            close_points = bullets or [
+                f"Sustained mastery and domain advancement in {title}",
+                f"Continuous refinement, empirical validation, and standard-setting impact",
+                f"Pioneering next-generation paradigms with verifiable outcomes",
+            ]
+            for p_text in close_points[:4]:
+                cp = ctf.add_paragraph()
+                cp.text = f"✔  {p_text}"
+                cp.font.size = Pt(14)
+                cp.font.color.rgb = TITLE_COLOR
+                cp.space_before = Pt(12)
+
+        # --- PRIMITIVE: QUOTE CALLOUT ---
+        elif layout_type in ("quote_callout", "quote"):
+            q_card = c_slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.5), Inches(1.8), Inches(10.33), Inches(4.5))
+            q_card.fill.solid()
+            q_card.fill.fore_color.rgb = CARD_BG
+            q_card.line.color.rgb = BORDER_COLOR
+
+            qtb = c_slide.shapes.add_textbox(Inches(2.0), Inches(2.3), Inches(9.33), Inches(3.5))
+            qtf = qtb.text_frame
+            qtf.word_wrap = True
+            qp0 = qtf.paragraphs[0]
+            qp0.text = f"“{slide_data.get('quote') or slide_data.get('text') or stitle}”"
+            qp0.font.size = Pt(24)
+            qp0.font.italic = True
+            qp0.font.bold = True
+            qp0.font.color.rgb = TITLE_COLOR
+            qp0.alignment = PP_ALIGN.CENTER
+
+            qp1 = qtf.add_paragraph()
+            qp1.text = f"— {slide_data.get('author') or slide_data.get('subtitle') or 'Executive Perspective'}"
+            qp1.font.size = Pt(14)
+            qp1.font.color.rgb = ACCENT_PURPLE
+            qp1.alignment = PP_ALIGN.CENTER
+            qp1.space_before = Pt(16)
+
         # --- PRIMITIVE 7: CARDS GRID (Default with Embedded Photo) ---
         else:
-            card_items = items or []
+            raw_cards = items or []
+            card_items = []
+            for c in raw_cards:
+                if isinstance(c, str):
+                    card_items.append({"title": c, "points": []})
+                elif isinstance(c, dict):
+                    card_items.append(c)
+                else:
+                    card_items.append({"title": str(c), "points": []})
+
             if not card_items and bullets:
                 chunk_size = max(1, (len(bullets) + 2) // 3)
                 for c_idx in range(0, len(bullets), chunk_size):
@@ -1119,6 +1256,38 @@ async def generate_pptx(
     filename = f"presentation_{safe_title}_{ts}.pptx"
     out_path = OUT_DIR / filename
     prs.save(out_path)
+
+    try:
+        gen_dir = Path("static/generated")
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy(out_path, gen_dir / filename)
+    except Exception as exc:
+        log.debug("Could not copy PPTX to static/generated: %s", exc)
+
+    deck_id = f"deck_{safe_title}_{ts}"
+    try:
+        from ..memory import store
+        store.save_artifact(
+            artifact_id=deck_id,
+            artifact_type="presentation",
+            title=title,
+            theme=theme,
+            data_json={
+                "title": title,
+                "subtitle": subtitle,
+                "author": author,
+                "theme": theme,
+                "slides": slides if isinstance(slides, list) else [],
+                "file_path": str(out_path),
+            },
+            file_path=str(out_path),
+            web_url=f"/api/files/download?filename={filename}",
+        )
+        store.set_last_generated_artifact(deck_id)
+        log.info("Registered presentation artifact %s in store: %s", deck_id, out_path)
+    except Exception as exc:
+        log.debug("Could not save presentation artifact in store: %s", exc)
 
     log.info("Generated Executive PPTX with Visual Primitives & Web Photos: %s", out_path)
     return str(out_path)

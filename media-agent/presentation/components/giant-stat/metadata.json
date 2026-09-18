@@ -1,0 +1,27 @@
+{
+  "id": "giant-stat",
+  "name": "Giant KPI Metric Counter",
+  "type": "component",
+  "tags": [
+    "stat",
+    "kpi",
+    "number",
+    "growth",
+    "percentage"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "data-story",
+    "financials",
+    "traction"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Oversized 64pt+ numerical metric with colorful delta percentage indicator and two-line context label.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

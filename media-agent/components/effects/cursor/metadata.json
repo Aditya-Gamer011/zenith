@@ -1,0 +1,37 @@
+{
+  "id": "cursor",
+  "name": "Smooth Magnetic Cursor Follower",
+  "category": "effects",
+  "source": "zenith",
+  "tags": [
+    "cursor",
+    "magnetic",
+    "interactive",
+    "pointer",
+    "smooth"
+  ],
+  "framework": "html",
+  "motion": "spring-follow",
+  "intensity": 4,
+  "best_for": [
+    "landing-page",
+    "portfolio",
+    "full-site"
+  ],
+  "description": "Smooth lagging fluid cursor dot and expanding trailing ring with interactive snapping over clickable elements.",
+  "code": {
+    "tsx": "import React, { useEffect, useRef } from \"react\";\n\nexport const SmoothCursor: React.FC = () => {\n  const dotRef = useRef<HTMLDivElement>(null);\n  const ringRef = useRef<HTMLDivElement>(null);\n\n  useEffect(() => {\n    let mouse = { x: -100, y: -100 };\n    let ring = { x: -100, y: -100 };\n\n    const onMove = (e: MouseEvent) => {\n      mouse = { x: e.clientX, y: e.clientY };\n      if (dotRef.current) {\n        dotRef.current.style.transform = `translate3d(${mouse.x}px, ${mouse.y}px, 0)`;\n      }\n    };\n\n    const loop = () => {\n      ring.x += (mouse.x - ring.x) * 0.15;\n      ring.y += (mouse.y - ring.y) * 0.15;\n      if (ringRef.current) {\n        ringRef.current.style.transform = `translate3d(${ring.x - 18}px, ${ring.y - 18}px, 0)`;\n      }\n      requestAnimationFrame(loop);\n    };\n\n    window.addEventListener(\"mousemove\", onMove);\n    const id = requestAnimationFrame(loop);\n    return () => {\n      window.removeEventListener(\"mousemove\", onMove);\n      cancelAnimationFrame(id);\n    };\n  }, []);\n\n  return (\n    <>\n      <div ref={dotRef} className=\"fixed top-0 left-0 w-2 h-2 rounded-full bg-cyan-400 pointer-events-none z-50 transition-transform duration-75\" />\n      <div ref={ringRef} className=\"fixed top-0 left-0 w-9 h-9 rounded-full border border-cyan-400/40 pointer-events-none z-50\" />\n    </>\n  );\n};\n",
+    "css": ".custom-cursor-dot {\n  position: fixed;\n  top: 0;\n  left: 0;\n  width: 6px;\n  height: 6px;\n  border-radius: 50%;\n  background: var(--accent-1, #00f3ff);\n  pointer-events: none;\n  z-index: 9999;\n  transform: translate(-50%, -50%);\n}\n.custom-cursor-ring {\n  position: fixed;\n  top: 0;\n  left: 0;\n  width: 36px;\n  height: 36px;\n  border-radius: 50%;\n  border: 1.5px solid var(--glow-color, rgba(0, 243, 255, 0.4));\n  pointer-events: none;\n  z-index: 9998;\n  transform: translate(-50%, -50%);\n  transition: width 0.2s, height 0.2s, border-color 0.2s;\n}\n",
+    "html": "<div class=\"custom-cursor-dot\" id=\"cursor-dot\"></div>\n<div class=\"custom-cursor-ring\" id=\"cursor-ring\"></div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

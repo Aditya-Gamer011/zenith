@@ -1,0 +1,25 @@
+{
+  "id": "slide-up",
+  "name": "Upward Kinetic Rise",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "slide-up",
+    "rise",
+    "modern"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "split-screen",
+    "cards",
+    "data-story"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Upward elevation entrance mimicking high-end web interactions.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

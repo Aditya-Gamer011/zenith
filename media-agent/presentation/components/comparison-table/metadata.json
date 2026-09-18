@@ -1,0 +1,26 @@
+{
+  "id": "comparison-table",
+  "name": "Comparison Matrix Block",
+  "type": "component",
+  "tags": [
+    "comparison",
+    "table",
+    "versus",
+    "matrix",
+    "legacy-modern"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "comparison",
+    "competitive-analysis"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Side-by-side comparative column card contrasting legacy paradigms against modern architectures.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -1,0 +1,26 @@
+{
+  "id": "shadow-depth",
+  "name": "Ambient Shadow Occlusion Depth",
+  "type": "effect",
+  "tags": [
+    "shadow",
+    "depth",
+    "occlusion",
+    "realism"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "bento",
+    "floating-card",
+    "split-screen"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic"
+  ],
+  "description": "Multi-layered soft ambient drop shadows delivering physical elevation without harsh edges.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -1,0 +1,25 @@
+{
+  "id": "gradient-title",
+  "name": "Multi-Stop Gradient Title",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "gradient",
+    "color",
+    "vibrant"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "statement"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative",
+    "playful-youthful"
+  ],
+  "description": "Luminous dual-tone linear color gradient sweeping horizontally through headline text.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

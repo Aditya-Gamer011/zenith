@@ -1,0 +1,23 @@
+{
+  "id": "light-beam",
+  "name": "Directional Light Beam",
+  "type": "effect",
+  "tags": [
+    "light-beam",
+    "laser",
+    "cinema",
+    "focus"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "statement"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic"
+  ],
+  "description": "Diagonal luminescent light beam casting directional highlight across dark slide canvas.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

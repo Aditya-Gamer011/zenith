@@ -1,0 +1,34 @@
+{
+  "id": "editorial",
+  "name": "Asymmetric Editorial Layout",
+  "type": "layout",
+  "tags": [
+    "editorial",
+    "magazine",
+    "whitespace",
+    "sophisticated",
+    "asymmetric"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "thesis",
+    "concept",
+    "product-reveal",
+    "brand"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Swiss & Pentagram-inspired editorial layout with large headline typography, asymmetric margins, and refined metadata caption blocks.",
+  "components": [
+    "editorial-title",
+    "glass-card",
+    "metadata-caption"
+  ],
+  "motion": [
+    "fade",
+    "slide-up"
+  ],
+  "default_props": {}
+}

@@ -1,0 +1,35 @@
+{
+  "id": "closing",
+  "name": "Executive Closing & CTA Layout",
+  "type": "layout",
+  "tags": [
+    "closing",
+    "cta",
+    "contact",
+    "final",
+    "hero"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "closing",
+    "final-hero",
+    "cta"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium",
+    "playful-youthful"
+  ],
+  "description": "Authoritative closing statement paired with primary contact channels, author credentials, and live CTA.",
+  "components": [
+    "closing-headline",
+    "cta-button",
+    "contact-pill"
+  ],
+  "motion": [
+    "fade",
+    "zoom"
+  ],
+  "default_props": {}
+}

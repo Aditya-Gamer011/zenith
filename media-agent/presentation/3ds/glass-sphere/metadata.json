@@ -1,0 +1,25 @@
+{
+  "id": "glass-sphere",
+  "name": "Frosted Glass Hologram Sphere",
+  "type": "3d",
+  "tags": [
+    "3d",
+    "glass",
+    "sphere",
+    "frosted",
+    "depth"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "statement"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Translucent frosted glass volumetric sphere with internal refracted glow.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -1,0 +1,37 @@
+{
+  "id": "scroll-linked-parallax",
+  "name": "GSAP Scroll-Linked Parallax Section",
+  "category": "gsap",
+  "source": "gsap",
+  "tags": [
+    "gsap",
+    "scroll",
+    "parallax",
+    "scrolltrigger",
+    "motion"
+  ],
+  "framework": "html",
+  "motion": "scroll-parallax",
+  "intensity": 4,
+  "best_for": [
+    "landing-page",
+    "showcase",
+    "storytelling"
+  ],
+  "description": "GSAP ScrollTrigger primitive pinning elements and translating foreground/background at differing speeds.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const ScrollParallaxPrimitive: React.FC<{ children?: React.ReactNode }> = ({ children }) => {\n  return <section className=\"relative overflow-hidden py-24\">{children}</section>;\n};\n",
+    "css": ".parallax-section {\n  position: relative;\n  overflow: hidden;\n  padding: 100px 0;\n}\n.parallax-layer-bg {\n  transform: translateY(var(--scroll-offset-bg, 0));\n  will-change: transform;\n}\n.parallax-layer-fg {\n  transform: translateY(var(--scroll-offset-fg, 0));\n  will-change: transform;\n}\n",
+    "html": "<div class=\"parallax-section\" data-parallax=\"true\">\n  <div class=\"parallax-layer-bg\">Background Artwork</div>\n  <div class=\"parallax-layer-fg\">Foreground Content</div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "floating-card",
+  "name": "Floating Elevation Card",
+  "type": "component",
+  "tags": [
+    "floating",
+    "elevation",
+    "depth",
+    "shadow",
+    "card"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "features",
+    "bento",
+    "split-screen"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic"
+  ],
+  "description": "Elevated card with deep drop shadow and layered depth off the canvas plane.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

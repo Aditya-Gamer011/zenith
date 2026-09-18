@@ -1,0 +1,37 @@
+{
+  "id": "spotlight",
+  "name": "Interactive Spotlight Beam",
+  "category": "effects",
+  "source": "aceternity",
+  "tags": [
+    "spotlight",
+    "beam",
+    "hover",
+    "illumination",
+    "dark-mode"
+  ],
+  "framework": "html",
+  "motion": "mouse-follow",
+  "intensity": 3,
+  "best_for": [
+    "cards",
+    "sections",
+    "hero"
+  ],
+  "description": "Dynamic radial spotlight tracking cursor coordinates to illuminate dark surface textures on hover.",
+  "code": {
+    "tsx": "import React, { useRef, useState } from \"react\";\n\nexport const SpotlightContainer: React.FC<{ children?: React.ReactNode }> = ({ children }) => {\n  const containerRef = useRef<HTMLDivElement>(null);\n  const [pos, setPos] = useState({ x: 0, y: 0, opacity: 0 });\n\n  return (\n    <div\n      ref={containerRef}\n      onMouseMove={(e) => {\n        const rect = containerRef.current?.getBoundingClientRect();\n        if (!rect) return;\n        setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top, opacity: 1 });\n      }}\n      onMouseLeave={() => setPos((prev) => ({ ...prev, opacity: 0 }))}\n      className=\"relative overflow-hidden rounded-2xl bg-neutral-950 p-8 border border-neutral-800\"\n    >\n      <div\n        className=\"pointer-events-none absolute -inset-px transition-opacity duration-300\"\n        style={{\n          opacity: pos.opacity,\n          background: `radial-gradient(600px circle at ${pos.x}px ${pos.y}px, rgba(56, 189, 248, 0.15), transparent 40%)`,\n        }}\n      />\n      <div className=\"relative z-10\">{children}</div>\n    </div>\n  );\n};\n",
+    "css": ".spotlight-panel {\n  position: relative;\n  overflow: hidden;\n  border-radius: 16px;\n  background: var(--card-bg, #181b20);\n  border: 1px solid var(--border-color, #2a2e37);\n}\n.spotlight-panel::before {\n  content: '';\n  position: absolute;\n  inset: -1px;\n  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--glow-color, rgba(59, 130, 246, 0.18)), transparent 60%);\n  opacity: var(--spotlight-opacity, 0);\n  transition: opacity 0.3s ease;\n  pointer-events: none;\n  z-index: 1;\n}\n.spotlight-panel:hover {\n  --spotlight-opacity: 1;\n}\n",
+    "html": "<div class=\"spotlight-panel\" data-spotlight=\"true\">\n  <div style=\"position: relative; z-index: 2; padding: 32px;\">\n    <h3>Illuminated Surface</h3>\n    <p>Move cursor to project directional light across this container.</p>\n  </div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

@@ -1,0 +1,16 @@
+.glow-aura-wrap {
+  position: relative;
+}
+.glow-aura-layer {
+  position: absolute;
+  inset: -12px;
+  border-radius: 24px;
+  background: conic-gradient(from 0deg at 50% 50%, var(--accent-1, #d4a373) 0deg, var(--accent-2, #3b82f6) 180deg, var(--accent-1, #d4a373) 360deg);
+  filter: blur(28px);
+  opacity: 0.35;
+  z-index: 0;
+  animation: glow-spin 10s linear infinite;
+}
+@keyframes glow-spin {
+  to { transform: rotate(360deg); }
+}

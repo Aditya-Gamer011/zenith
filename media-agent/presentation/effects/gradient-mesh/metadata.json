@@ -1,0 +1,27 @@
+{
+  "id": "gradient-mesh",
+  "name": "Chromatic Gradient Mesh",
+  "type": "effect",
+  "tags": [
+    "gradient",
+    "mesh",
+    "chromatic",
+    "color",
+    "background"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "image-bleed",
+    "closing"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative",
+    "playful-youthful"
+  ],
+  "description": "Multi-point fluid chromatic mesh blending vibrant accent hues across dark surfaces.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

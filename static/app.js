@@ -12,6 +12,7 @@
   let heartbeatTimer = null;
   let typingEl = null;
   let streamBuffer = "";
+  let ackPendingDivider = false;
   let awaiting = false;
 
   const SEND_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
@@ -81,6 +82,7 @@
   // Live input runs at the model's native 16 kHz. The browser mic may be
   // 48 kHz, so the capture ScriptProcessor decimates to 16k mono before PCM.
   const LIVE_PCM_RATE = 16000;
+  const LIVE_OUTPUT_RATE = 24000;
 
 
 
@@ -3088,8 +3090,6 @@
     const memBtn = $("mem-btn");
     if (memBtn) memBtn.addEventListener("click", toggleSide);
 
-    const agentsBtn = $("agents-btn");
-    if (agentsBtn) agentsBtn.addEventListener("click", toggleSide);
 
     const sideCloseBtn = $("side-close-btn");
     if (sideCloseBtn) sideCloseBtn.addEventListener("click", closeSide);
@@ -3113,18 +3113,6 @@
         const touchEndX = e.changedTouches[0].screenX;
         if (touchEndX - touchStartX > 50) closeSide(); // Swiped right -> close
       }, { passive: true });
-    }
-
-    // Attach button & file input
-    const attachBtn = $("attach-btn");
-    const fileInput = $("file-input");
-    if (attachBtn && fileInput) {
-      attachBtn.addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", (e) => {
-        const files = Array.from(e.target.files || []);
-        files.forEach(f => uploadFileObj(f));
-        fileInput.value = "";
-      });
     }
 
     // Drag & Drop File Upload Overlay
@@ -3648,6 +3636,27 @@
 
   let pendingPrompt = null;
   let awaitingTimer = null;
+  const WATCHDOG_INACTIVITY_MS = 120000; // 120 seconds of inactivity before watchdog fires
+
+  function refreshWatchdog(timeoutMs = WATCHDOG_INACTIVITY_MS) {
+    if (!awaiting) return;
+    clearTimeout(awaitingTimer);
+    awaitingTimer = setTimeout(() => {
+      if (awaiting) {
+        awaiting = false;
+        setGenerating(false);
+        if (typingEl) { typingEl.remove(); typingEl = null; }
+        addBubble("assistant", renderMD("_I'm still thinking — say again or type a new message._"));
+        scroll();
+        pumpOutQueue();
+      }
+    }, timeoutMs);
+  }
+
+  function clearWatchdog() {
+    clearTimeout(awaitingTimer);
+    awaitingTimer = null;
+  }
 
   function initWS() {
     if (!currentUser) return;
@@ -3661,12 +3670,13 @@
       return;
     }
     ws.onopen = () => {
-      clearTimeout(awaitingTimer);
-      if (awaiting) {
-        awaiting = false;
-        setGenerating(false);
-      }
+      clearWatchdog();
       setConn(true);
+      if (pendingConfirmDecision && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "confirm", id: pendingConfirmDecision.id, decision: pendingConfirmDecision.decision }));
+        pendingConfirmDecision = null;
+        pendingConfirm = null;
+      }
       heartbeatTimer = setInterval(() => {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" }));
       }, 15000);
@@ -3680,6 +3690,8 @@
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
       if (m.type === "pong") return;
+      // Active server event received: refresh the inactivity watchdog so long-running tasks are never prematurely aborted
+      refreshWatchdog();
       if (m.type === "error" && (m.error === "forbidden" || (m.message && m.message.includes("perms")))) {
         showForbiddenScreen(currentUser, m.message);
         return;
@@ -3687,29 +3699,25 @@
       route(m);
     };
     ws.onclose = (e) => {
-      clearTimeout(awaitingTimer);
-      if (awaiting) {
-        awaiting = false;
-        setGenerating(false);
-      }
       setConn(false);
       clearInterval(heartbeatTimer);
       if (e.code === 4001) {
+        clearTimeout(awaitingTimer);
+        awaiting = false;
+        setGenerating(false);
         showLoginScreen();
         return;
       }
       if (e.code === 4003) {
+        clearTimeout(awaitingTimer);
+        awaiting = false;
+        setGenerating(false);
         showForbiddenScreen(currentUser, "You don't have perms to access this.");
         return;
       }
       scheduleReconnect();
     };
     ws.onerror = () => {
-      clearTimeout(awaitingTimer);
-      if (awaiting) {
-        awaiting = false;
-        setGenerating(false);
-      }
       try { ws.close(); } catch {}
     };
   }
@@ -3720,12 +3728,24 @@
     reconnectTimer = setTimeout(initWS, 2500);
   }
 
+  // Instant re-connect and state-sync when the user returns to the tab
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        initWS();
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+      }
+    }
+  });
+
   function setConn() {
     // No connection pill in the header anymore — Zenith stays calm either way.
   }
 
   /* ── confirmation dock (mutating-tool checkpoint) ─────── */
   let pendingConfirm = null;
+  let pendingConfirmDecision = null;
   let confirmTimer = null;
   const CONFIRM_TIMEOUT_MS = 180000; // matches CONFIRM_TIMEOUT server default
 
@@ -3763,9 +3783,12 @@
     const dock = $("confirm-dock");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "confirm", id: pendingConfirm, decision }));
+      pendingConfirm = null;
+    } else {
+      // Reconnection in flight: buffer decision so it sends immediately on ws.onopen
+      pendingConfirmDecision = { id: pendingConfirm, decision };
     }
     if (dock) { dock.classList.remove("show"); dock.hidden = true; }
-    pendingConfirm = null;
     if (timedOut) logTerminal("confirmation timed out — action refused", "err");
   }
 
@@ -3804,8 +3827,24 @@
         logTerminal("connected · ws ready", "sys");
         break;
       case "text":
+        if (ackPendingDivider) {
+          if (streamBuffer && !streamBuffer.includes("\n\n---\n\n")) {
+            streamBuffer += "\n\n---\n\n";
+          }
+          ackPendingDivider = false;
+        }
         streamBuffer += m.text;
         syncStream();
+        break;
+      case "ack":
+        if (m.text) {
+          streamBuffer = m.text;
+          ackPendingDivider = true;
+          syncStream();
+        }
+        if (m.audio) {
+          playLiveAudio(m.audio, m.model, m.audio_mime);
+        }
         break;
       case "tool_start":
         if ((m.delegated_agent || m.run_id) && getDelegationCard(m)) {
@@ -3842,13 +3881,14 @@
           finishStateSoon();
           logTerminal("task complete", "sys");
         } else if (m.text && m.text.audio) {
-          // Gemini Live — Zenith's reply arrived as native audio already. Show a
-          // serene acknowledgment and play the model's spoken reply directly.
-          finishStream("");            // clear the typing indicator
+          finishStream("");
           playLiveAudio(m.text.audio, m.text.model, m.text.audio_mime);
           finishTurn();
           finishStateSoon();
           logTerminal("task complete (gemini live)", "sys");
+        }
+        if (m.audio) {
+          playLiveAudio(m.audio, m.model, m.audio_mime);
         }
         break;
       case "error":
@@ -3959,6 +3999,8 @@
   function beginTurn(prompt) {
     clearConfirm();  // a new request supersedes any pending confirmation
     turnStartTs = Date.now();
+    streamBuffer = "";
+    ackPendingDivider = false;
     const p = document.createElement("div");
     p.className = "turn-chip";
     p.innerHTML = `<span class="tc-mark">◷</span><span class="tc-label">working on it</span><span class="tc-prompt">${esc((prompt || "").slice(0, 60))}</span><span class="tl-dur"></span>`;
@@ -4007,6 +4049,7 @@
     }
 
     streamBuffer = "";
+    ackPendingDivider = false;
     awaiting = false;
     setGenerating(false);
     pumpOutQueue();  // multi-message in a row: send the next queued prompt
@@ -4102,6 +4145,7 @@
     if (typingEl) { typingEl.remove(); typingEl = null; }
     addBubble("assistant", `<p class="err-text">✕ ${esc(msg || "Something went wrong.")}</p>`);
     streamBuffer = "";
+    ackPendingDivider = false;
     awaiting = false;
     setGenerating(false);
     cancelTurn();
@@ -4747,60 +4791,317 @@
   /* ── file upload & attachments ──────────────────────── */
 
   let attachedFiles = [];
+  let isUploadingFile = false;
+
+  function formatFileSize(bytes) {
+    if (!bytes || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + " " + units[i];
+  }
 
   function renderAttachments() {
     const tray = $("attachment-tray");
     if (!tray) return;
-    if (!attachedFiles.length) {
+    if (!attachedFiles.length && !isUploadingFile) {
       tray.style.display = "none";
       tray.innerHTML = "";
       return;
     }
     tray.style.display = "flex";
-    tray.innerHTML = attachedFiles.map((f, idx) => {
-      const icon = f.is_image ? `<img src="${esc(f.url)}"/>` : `📄`;
-      return `<div class="attach-badge">${icon} <span>${esc(f.filename)}</span> <button class="rm-btn" data-idx="${idx}">✕</button></div>`;
+    let html = attachedFiles.map((f, idx) => {
+      let iconHtml = "";
+      if (f.is_image) {
+        iconHtml = `<img class="attach-badge-thumb" src="${esc(f.url)}" alt="${esc(f.filename)}" />`;
+      } else {
+        const ext = (f.filename || "").split(".").pop().toUpperCase().slice(0, 4) || "FILE";
+        iconHtml = `<div class="attach-badge-icon">${esc(ext)}</div>`;
+      }
+      const sizeStr = f.size ? formatFileSize(f.size) : "";
+      return `
+        <div class="attach-badge">
+          ${iconHtml}
+          <div class="attach-badge-info">
+            <span class="attach-badge-name" title="${esc(f.filename)}">${esc(f.filename)}</span>
+            ${sizeStr ? `<span class="attach-badge-meta">${esc(sizeStr)}</span>` : ""}
+          </div>
+          <button type="button" class="rm-btn" data-idx="${idx}" title="Remove file" aria-label="Remove">✕</button>
+        </div>
+      `;
     }).join("");
+
+    if (isUploadingFile) {
+      html += `
+        <div class="attach-badge" style="opacity:0.75">
+          <div class="attach-badge-icon" style="background:rgba(99,102,241,0.25)">⏳</div>
+          <div class="attach-badge-info">
+            <span class="attach-badge-name">Uploading…</span>
+            <span class="attach-badge-meta">Processing file</span>
+          </div>
+        </div>
+      `;
+    }
+
+    tray.innerHTML = html;
 
     tray.querySelectorAll(".rm-btn").forEach(btn => {
       btn.onclick = (e) => {
-        const idx = parseInt(e.target.dataset.idx, 10);
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
         attachedFiles.splice(idx, 1);
         renderAttachments();
       };
     });
   }
 
-  async function uploadFileObj(file) {
+  async function uploadFileObj(file, customName) {
     if (!file) return;
+    isUploadingFile = true;
+    renderAttachments();
+
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", file, customName || file.name || "attachment");
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
         if (data.status === "ok") {
           attachedFiles.push(data);
-          renderAttachments();
+        } else {
+          console.warn("[zenith] Upload error:", data.message);
+          toast(data.message || "Failed to upload file", "warn");
         }
+      } else {
+        toast("Upload failed with server error", "warn");
       }
     } catch (err) {
       console.warn("Upload failed:", err);
+      toast("Could not upload file — network error", "warn");
+    } finally {
+      isUploadingFile = false;
+      renderAttachments();
     }
   }
 
   function initAttachmentHandlers() {
     const attachBtn = $("attach-btn");
+    const attachDropup = $("attach-dropup");
+    const optCamera = $("attach-opt-camera");
+    const optGallery = $("attach-opt-gallery");
+    const optDoc = $("attach-opt-doc");
+
+    const inputCamera = $("attach-input-camera");
+    const inputGallery = $("attach-input-gallery");
+    const inputDoc = $("attach-input-doc");
     const fileInput = $("file-input");
     const inp = $("inp");
 
-    if (attachBtn && fileInput) {
-      attachBtn.onclick = () => fileInput.click();
+    function toggleAttachDropup(open) {
+      if (!attachDropup || !attachBtn) return;
+      const isOpen = typeof open === "boolean" ? open : !attachDropup.classList.contains("open");
+      if (isOpen) {
+        attachDropup.classList.add("open");
+        attachBtn.classList.add("active");
+        attachBtn.setAttribute("aria-expanded", "true");
+      } else {
+        attachDropup.classList.remove("open");
+        attachBtn.classList.remove("active");
+        attachBtn.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    if (attachBtn) {
+      attachBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleAttachDropup();
+      };
+    }
+
+    // Close on click outside
+    document.addEventListener("click", (e) => {
+      if (attachDropup && attachDropup.classList.contains("open")) {
+        const wrapper = $("attach-wrapper");
+        if (wrapper && !wrapper.contains(e.target)) {
+          toggleAttachDropup(false);
+        }
+      }
+    });
+
+    // Close on Escape
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && attachDropup && attachDropup.classList.contains("open")) {
+        toggleAttachDropup(false);
+      }
+    });
+
+    // Option: Gallery
+    if (optGallery && inputGallery) {
+      optGallery.onclick = () => {
+        toggleAttachDropup(false);
+        inputGallery.click();
+      };
+      inputGallery.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(f => uploadFileObj(f));
+        inputGallery.value = "";
+      };
+    }
+
+    // Option: Documents
+    if (optDoc && inputDoc) {
+      optDoc.onclick = () => {
+        toggleAttachDropup(false);
+        inputDoc.click();
+      };
+      inputDoc.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(f => uploadFileObj(f));
+        inputDoc.value = "";
+      };
+    }
+
+    // Option: Camera
+    if (optCamera) {
+      optCamera.onclick = () => {
+        toggleAttachDropup(false);
+        openCameraSnapshot();
+      };
+    }
+    if (inputCamera) {
+      inputCamera.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(f => uploadFileObj(f));
+        inputCamera.value = "";
+      };
+    }
+    if (fileInput) {
       fileInput.onchange = (e) => {
         const files = Array.from(e.target.files || []);
         files.forEach(f => uploadFileObj(f));
         fileInput.value = "";
       };
+    }
+
+    // Interactive Camera Snapshot Flow
+    let snapStream = null;
+    let snapFacing = "user";
+
+    async function openCameraSnapshot() {
+      const modal = $("camera-snap-modal");
+      const video = $("camera-snap-video");
+      const preview = $("camera-snap-preview");
+      const loading = $("camera-snap-loading");
+      const liveControls = $("camera-snap-live-controls");
+      const reviewControls = $("camera-snap-review-controls");
+      const closeBtn = $("camera-snap-close");
+      const backdrop = $("camera-snap-backdrop");
+      const shutterBtn = $("camera-shutter-btn");
+      const retakeBtn = $("camera-snap-retake");
+      const confirmBtn = $("camera-snap-confirm");
+      const flipBtn = $("camera-snap-flip");
+      const canvas = $("camera-snap-canvas");
+
+      if (!modal || !video) {
+        if (inputCamera) inputCamera.click();
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (inputCamera) inputCamera.click();
+        return;
+      }
+
+      modal.style.display = "flex";
+      video.style.display = "block";
+      if (preview) preview.style.display = "none";
+      if (loading) loading.style.display = "flex";
+      if (liveControls) liveControls.style.display = "flex";
+      if (reviewControls) reviewControls.style.display = "none";
+
+      function closeSnapModal() {
+        if (snapStream) {
+          snapStream.getTracks().forEach(t => t.stop());
+          snapStream = null;
+        }
+        modal.style.display = "none";
+      }
+
+      if (closeBtn) closeBtn.onclick = closeSnapModal;
+      if (backdrop) backdrop.onclick = closeSnapModal;
+
+      async function startLiveCam(facing) {
+        if (snapStream) {
+          snapStream.getTracks().forEach(t => t.stop());
+          snapStream = null;
+        }
+        if (loading) loading.style.display = "flex";
+        try {
+          snapStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          });
+          video.srcObject = snapStream;
+          await video.play();
+          if (loading) loading.style.display = "none";
+        } catch (err) {
+          console.warn("[zenith] Camera snapshot failed:", err);
+          closeSnapModal();
+          if (inputCamera) inputCamera.click();
+        }
+      }
+
+      await startLiveCam(snapFacing);
+
+      if (flipBtn) {
+        flipBtn.style.display = "inline-flex";
+        flipBtn.onclick = () => {
+          snapFacing = (snapFacing === "user") ? "environment" : "user";
+          startLiveCam(snapFacing);
+        };
+      }
+
+      let capturedBlob = null;
+
+      if (shutterBtn && canvas) {
+        shutterBtn.onclick = () => {
+          if (!video.videoWidth) return;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            capturedBlob = blob;
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+            if (preview) {
+              preview.src = dataUrl;
+              preview.style.display = "block";
+            }
+            video.style.display = "none";
+            if (liveControls) liveControls.style.display = "none";
+            if (reviewControls) reviewControls.style.display = "flex";
+          }, "image/jpeg", 0.92);
+        };
+      }
+
+      if (retakeBtn) {
+        retakeBtn.onclick = () => {
+          capturedBlob = null;
+          if (preview) preview.style.display = "none";
+          video.style.display = "block";
+          if (liveControls) liveControls.style.display = "flex";
+          if (reviewControls) reviewControls.style.display = "none";
+        };
+      }
+
+      if (confirmBtn) {
+        confirmBtn.onclick = () => {
+          if (capturedBlob) {
+            const snapFile = new File([capturedBlob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+            uploadFileObj(snapFile);
+          }
+          closeSnapModal();
+        };
+      }
     }
 
     if (inp) {
@@ -4811,7 +5112,7 @@
         if (fileItems.length) {
           fileItems.forEach(item => {
             const blob = item.getAsFile();
-            if (blob) uploadFileObj(blob);
+            if (blob) uploadFileObj(blob, `pasted_${Date.now()}.png`);
           });
         }
       });
@@ -4868,24 +5169,16 @@
     const opts = item.opts || {};
     awaiting = true;
     setGenerating(true);
-    // Watchdog: if Zenith never emits `done` (provider stall, WS hang), don't
-    // lock the composer forever. Reset awaiting + queue so the user can retry.
-    clearTimeout(awaitingTimer);
-    awaitingTimer = setTimeout(() => {
-      if (awaiting) {
-        awaiting = false;
-        setGenerating(false);
-        if (typingEl) { typingEl.remove(); typingEl = null; }
-        addBubble("assistant", renderMD("_I'm still thinking — say again or type a new message._"));
-        scroll();
-        pumpOutQueue();  // let any queued message flow
-      }
-    }, 30000);
+    // Inactivity watchdog: resets on every incoming token/tool step from the server,
+    // only firing if there is absolute silence for WATCHDOG_INACTIVITY_MS (120s).
+    refreshWatchdog();
     hideWelcome();
 
     let fullPrompt = text || "Please inspect the attached file/image.";
+    let filesToSend = [];
 
     if (attachedFiles.length) {
+      filesToSend = attachedFiles.slice();
       const fileNotes = attachedFiles.map(f =>
         `- ${f.is_image ? 'Image' : 'File'}: ${f.filename} (saved path: "${f.path}", url: "${f.url}")`
       ).join("\n");
@@ -4893,9 +5186,9 @@
 
       const previewsHtml = attachedFiles.map(f => {
         if (f.is_image) {
-          return `<div style="margin-top:8px"><img src="${esc(f.url)}" style="max-width:280px;max-height:220px;border-radius:6px;border:1px solid var(--line);display:block;"/></div>`;
+          return `<div style="margin-top:8px"><img src="${esc(f.url)}" style="max-width:280px;max-height:220px;border-radius:10px;border:1px solid var(--line);display:block;box-shadow:0 4px 14px rgba(0,0,0,0.25);"/></div>`;
         } else {
-          return `<div style="margin-top:6px;font-size:0.76rem;color:var(--ink-faint);font-family:var(--mono)">↳ file: ${esc(f.filename)}</div>`;
+          return `<div style="margin-top:6px;font-size:0.8rem;color:var(--ink);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);padding:5px 12px;border-radius:10px;display:inline-flex;align-items:center;gap:8px;"><span style="font-size:1.1rem">📄</span> <span style="font-weight:500">${esc(f.filename)}</span></div>`;
         }
       }).join("");
 
@@ -4909,7 +5202,7 @@
 
     // Tag the WS message so Zenith knows the turn arrived by voice — it can
     // tailor its reply (and the memory layer can attribute it correctly).
-    const msg = { type: "chat", prompt: fullPrompt };
+    const msg = { type: "chat", prompt: fullPrompt, files: filesToSend };
     if (opts.voice) {
       msg.voice = true;
       // Keep the transcript honest for the user.
@@ -4929,6 +5222,7 @@
     $("msgs").innerHTML = resetWelcomeHTML();
     typingEl = null;
     streamBuffer = "";
+    ackPendingDivider = false;
     awaiting = false;
     setGenerating(false);
     turnStartTs = null;
@@ -4938,6 +5232,7 @@
     $("msgs").innerHTML = resetWelcomeHTML();
     typingEl = null;
     streamBuffer = "";
+    ackPendingDivider = false;
     awaiting = false;
     setGenerating(false);
     turnStartTs = null;
@@ -5287,7 +5582,6 @@
 
     // ── Context Drawer Wiring ──
     const ctxBtn = $("context-btn");
-    const agentsBtn = $("agents-btn");
     const ctxDrawer = $("context-drawer");
     const ctxCloseBtn = $("context-drawer-close-btn");
     const ctxGhostBtn = $("ctx-ghost-toggle-btn");
@@ -5315,7 +5609,6 @@
     window.toggleContextDrawer = toggleContextDrawer;
 
     if (ctxBtn) ctxBtn.addEventListener("click", () => toggleContextDrawer("ctx-overview"));
-    if (agentsBtn) agentsBtn.addEventListener("click", () => toggleContextDrawer("ctx-agents"));
     if (ctxCloseBtn) ctxCloseBtn.addEventListener("click", () => {
       if (ctxDrawer) ctxDrawer.style.display = "none";
       if (ctxBtn) ctxBtn.classList.remove("active");
@@ -6047,6 +6340,27 @@
     }
   }
 
+  // ── Gemini Live persistent native-audio state ──
+  let useStreamingTTS = false;
+  let useLiveStreaming = true; // default true when server supports live
+  let liveWs = null;
+  let liveWsNominal = false;
+  let liveAudioCtx = null;
+  let liveGain = null;
+  let liveAnalyser = null;
+  let liveActiveSources = [];
+  let liveNextPlayTime = 0;
+  let liveAudioStart = 0;
+  let liveTalkStart = 0;
+  let liveUserDetectPending = false;
+  let liveWsRefused = false;
+  let liveVoiceBright = false;
+  let liveStreaming = false;
+  let liveAudioThisTurn = 0;
+  let liveReplyEnd = 0;
+  let liveCaptureNode = null;
+  let liveAssistantTranscript = "";
+
   /* Pull live-conversation tuning (silence/speech thresholds) from the server. */
   async function loadVoiceConfig() {
     try {
@@ -6267,12 +6581,9 @@
     let s;
     try {
       s = new WebSocket(`${proto}//${location.host}/ws/live`);
-    } catch { setFlag(liveWsRefused = true); return; }
+    } catch { liveWsRefused = true; return; }
     liveWs = s;
     liveWsNominal = false;
-    // The capture node sets this true while the user is speaking; model audio
-    // arriving while it's false is treated as artifacting and not streamed
-    // back, so stale/dropped binaries can't garble the reply.
     s._uplinking = false;
     liveStreaming = false;
     liveUserDetectPending = true;
@@ -6287,39 +6598,85 @@
         let m;
         try { m = JSON.parse(e.data); } catch { return; }
         switch (m.type) {
+          case "ready":
+            liveWsNominal = true;
+            wireLiveCapture();
+            if (m.model) {
+              const cleanModel = m.model.replace(/^models\//, "");
+              const vStatus = $("v-status");
+              if (vStatus) vStatus.textContent = `voice · connected (${cleanModel})`;
+            }
+            break;
           case "heard":
             liveUserDetectPending = false;
             liveTalkStart = performance.now();
+            if (m.text) {
+              const vText = $("v-text");
+              if (vText) vText.textContent = `“${m.text}”`;
+              const vStatus = $("v-status");
+              if (vStatus) vStatus.textContent = "voice · heard · thinking…";
+              setVoiceState("processing");
+            }
             break;
-          case "done":
+          case "interrupted":
+            stopLivePlayback();
+            liveStreaming = false;
+            liveAssistantTranscript = "";
+            liveUserDetectPending = false;
+            setVoiceState("listening");
+            if ($("v-status")) $("v-status").textContent = "voice · listening…";
+            break;
+          case "tool":
+            if (m.name) {
+              const toolName = m.name.replace(/_/g, " ");
+              const vStatus = $("v-status");
+              if (vStatus) vStatus.textContent = `voice · running ${toolName}…`;
+              const vText = $("v-text");
+              if (vText && !liveStreaming && !liveAssistantTranscript) vText.textContent = `Executing ${toolName}…`;
+            }
+            break;
+          case "assistant_text":
+            if (m.text) {
+              liveAssistantTranscript = (liveAssistantTranscript ? liveAssistantTranscript + " " : "") + m.text;
+              const vText = $("v-text");
+              if (vText) vText.textContent = liveAssistantTranscript;
+              const vStatus = $("v-status");
+              if (vStatus) vStatus.textContent = "voice · Zenith speaking…";
+              setVoiceState("processing");
+            }
+            break;
+          case "done": {
+            const hadAudio = (liveAudioThisTurn > 0) || (liveActiveSources.length > 0) || Boolean(liveAssistantTranscript);
             liveStreaming = false;
             liveUserDetectPending = true;
-            liveReplyEnd = performance.now();
             liveFinishModelAudio();
-            // Play this turn's accumulated reply as ONE contiguous buffer. The
-            // model's audio arrives in chunks; concatenating avoids the layered
-            // "multiple people" overlap and preserves true rate/speed.
-            if (liveTurnSamples.length) {
-              playLiveTurnAudio();
-            }
-            // A silent `done` on a LIVE session is NOT a Groq fallback trigger:
-            // the Live tunnel is healthy, the model just produced no audio this
-            // turn (a known alternation quirk). Stay quiet and let the next
-            // utterance proceed — the Groq "didn't catch that" belongs ONLY to
-            // the classic path, which fires when the Live path is entirely
-            // unavailable (all keys/models failed). Speaking it here is what
-            // caused "a second person (Groq) talking after Gemini".
-            liveTurnSamples = [];
             liveAudioThisTurn = 0;
+            if (!hadAudio && voiceOpen()) {
+              const vText = $("v-text");
+              if (vText) vText.textContent = "I didn't quite catch that — say that again?";
+              const vStatus = $("v-status");
+              if (vStatus) vStatus.textContent = "voice · listening…";
+              setVoiceState("listening");
+            } else {
+              setTimeout(() => {
+                if (voiceOpen() && !liveStreaming && liveActiveSources.length === 0) {
+                  const vText = $("v-text");
+                  if (vText && vText.textContent === liveAssistantTranscript) {
+                    vText.textContent = "keep talking — Zenith will listen.";
+                  }
+                  liveAssistantTranscript = "";
+                  refreshVoiceStatus();
+                }
+              }, 3500);
+            }
             break;
+          }
           case "error": {
             const soft = /no (audio|turn)|empty|no model/i.test(m.error || "");
             if (soft) break;
-            liveWsRefused = true;    // hard error -> stay classic for this session
+            liveWsRefused = true;
             lastLiveWsRefusedAt = Date.now();
             liveFinishModelAudio();
-            // Fall back to the classic path right away so the user isn't stuck
-            // waiting on a dead Live connection.
             if (liveWs && liveWs.readyState === WebSocket.OPEN) liveWs.close();
             break;
           }
@@ -6333,15 +6690,10 @@
           liveStreaming = true;
           liveAudioThisTurn += n;
           liveStartModelAudio();
-          // ACCUMULATE, don't play yet: the model's reply arrives in many small
-          // chunks. Playing each chunk the instant it lands layered them all on
-          // top of each other — the "multiple people" cacophony + a rushed,
-          // high-pitch-sounding reply. We collect the whole turn and play it as
-          // ONE continuous buffer when the server says done.
           const f = new Float32Array(n / 2);
           const d = new DataView(ab);
           for (let i = 0; i < f.length; i++) f[i] = d.getInt16(i * 2, true) / 32768;
-          liveTurnSamples.push(f);
+          queueLiveAudioChunk(f, LIVE_OUTPUT_RATE);
         }
       }
     };
@@ -6351,63 +6703,52 @@
       liveWsNominal = false;
       liveStreaming = false;
       liveUserDetectPending = true;
-      setFlag();
       if (useLiveStreaming && !liveWsRefused && voiceOpen()) {
-        // Reconnect after a transient close (e.g. the server recycled the
-        // session mid-conversation). Don't spin: one retry, then back off.
         setTimeout(() => {
           if (voiceOpen() && useLiveStreaming && !liveWsRefused && !liveWs) openLiveStreaming();
         }, 1000);
       }
     };
     s.onerror = () => { try { s.close(); } catch {} };
-    setFlag();
   }
 
   // Attach a ScriptProcessor capture node to the live session (one per open).
-  // The browser mic is typically 48 kHz; the Live model wants 16 kHz. We
-  // downsample here (nearest-neighbour of the accumulated samples) so the
-  // bytes we send really are 16 kHz PCM16 — the server no longer has to guess.
+  // Exact high-precision resampling to 16 kHz for Gemini Live.
   function wireLiveCapture() {
-    if (!audioCtx || !micStream || liveAudioCtx || liveGain) return;
+    if (!audioCtx || !micStream || liveCaptureNode) return;
     let src = null;
     try { src = audioCtx.createMediaStreamSource(micStream); } catch { return; }
     const inRate = audioCtx.sampleRate || 48000;
-    const step = Math.max(1, Math.round(inRate / LIVE_PCM_RATE));
-    const pending = [];  // tiny accumulator for the decimation ratio
 
-    const cap = audioCtx.createScriptProcessor(8192, 1, 1);
+    const cap = audioCtx.createScriptProcessor(4096, 1, 1);
     cap.onaudioprocess = (e) => {
       if (!liveWs || liveWs.readyState !== WebSocket.OPEN || !useLiveStreaming || liveWsRefused) return;
-      if (!vad.speech) {                     // only uplink while capturing
+      if (!vad.speech) {
         liveWs._uplinking = false;
         return;
       }
       liveWs._uplinking = true;
       const ch = e.inputBuffer.getChannelData(0);
-      if (pending.length) pending.push(ch[0]);
-      const out = [];
-      for (let i = pending.length ? 1 : 0; i < ch.length; i++) out.push(ch[i]);
-      pending.length = 0;
-      const pcm = new Int16Array(out.length / step);
-      let o = 0;
-      for (let i = 0; i < out.length; i += step) {
-        const s = out[i];
-        pcm[o++] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
+      const targetLen = Math.floor(ch.length * LIVE_PCM_RATE / inRate);
+      const pcm = new Int16Array(targetLen);
+      for (let i = 0; i < targetLen; i++) {
+        const srcPos = i * inRate / LIVE_PCM_RATE;
+        const i0 = Math.floor(srcPos);
+        const frac = srcPos - i0;
+        const s0 = ch[i0] || 0;
+        const s1 = (i0 + 1 < ch.length) ? ch[i0 + 1] : s0;
+        const s = s0 + (s1 - s0) * frac;
+        pcm[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
       }
       try { liveWs.send(pcm.buffer); } catch {}
     };
     try { src.connect(cap); } catch {}
-    // Pull the ScriptProcessor without routing mic audio to the speakers.
-    // Connecting to destination directly let Zenith's own reply re-enter the mic
-    // and re-trigger VAD (an echo/feedback loop that sounds like "multiple
-    // people"). A muted gain sink keeps the node alive but silent.
     const sink = audioCtx.createGain();
     sink.gain.value = 0;
     cap.connect(sink);
     sink.connect(audioCtx.destination);
+    liveCaptureNode = cap;
     liveAudioCtx = audioCtx;
-    liveGain = null;
 
     if (audioCtx.state === "suspended") { audioCtx.resume().catch(() => {}); }
   }
@@ -6417,52 +6758,59 @@
     if (!liveGain) {
       liveGain = audioCtx.createGain();
       liveGain.gain.value = 0.95;
-      liveGain.connect(audioCtx.destination);
+      liveAnalyser = audioCtx.createAnalyser();
+      liveAnalyser.fftSize = 64;
+      liveGain.connect(liveAnalyser);
+      liveAnalyser.connect(audioCtx.destination);
     }
   }
 
-  function playLiveTurnAudio() {
-    // Play the whole turn's reply (accumulated Float32 chunks in liveTurnSamples)
-    // as ONE buffer at 16 kHz. This is what fixes the overlapping-chunk cacophony
-    // ("multiple people") and the rushed high-pitch playback.
-    if (!liveTurnSamples || !liveTurnSamples.length) return;
+  function queueLiveAudioChunk(f32Array, sampleRate = LIVE_OUTPUT_RATE) {
+    if (!f32Array || !f32Array.length) return;
     ensureLiveDecoder();
+    if (!liveAudioCtx) liveAudioCtx = audioCtx;
+    if (liveAudioCtx.state === "suspended") liveAudioCtx.resume().catch(() => {});
+
     try {
-      let total = 0;
-      for (const c of liveTurnSamples) total += c.length;
-      // Gemini's native audio often ends on a clipped final phoneme (the model
-      // stops generating mid-syllable, so generationComplete cuts the last word
-      // abruptly). Pad the tail with ~200ms of silence so the reply ends
-      // naturally instead of feeling cut off.
-      const PAD_S = 0.2;
-      const pad = Math.round(LIVE_PCM_RATE * PAD_S);
-      const buf = new Float32Array(total + pad);
-      let o = 0;
-      for (const c of liveTurnSamples) { buf.set(c, o); o += c.length; }
-      // buf[o..] stays zero = trailing silence pad.
-      if (!liveAudioCtx) liveAudioCtx = audioCtx;
-      // Resume a suspended context so the source actually plays (a suspended
-      // context queues src.start() but never advances — the reply would be cut
-      // off or never heard).
-      if (liveAudioCtx.state === "suspended") liveAudioCtx.resume().catch(() => {});
+      const buf = liveAudioCtx.createBuffer(1, f32Array.length, sampleRate);
+      buf.getChannelData(0).set(f32Array);
+
       const src = liveAudioCtx.createBufferSource();
-      // The server relays the model's speech as 16 kHz PCM16 (its 24 kHz output
-      // is resampled before it leaves live.py). createBuffer's sampleRate tells
-      // the source node the buffer's TRUE rate — decoding 16k data at the device
-      // rate (48k) would play it ~3× too fast (chipmunk). 16k here + WebAudio's
-      // own resample to the device rate = correct pitch and duration.
-      src.buffer = liveAudioCtx.createBuffer(1, buf.length, LIVE_PCM_RATE);
-      src.buffer.getChannelData(0).set(buf);
+      src.buffer = buf;
       src.connect(liveGain);
-      src.start();
-      // Keep the VAD echo-mute window covering the WHOLE reply (not just the
-      // first 450ms) — otherwise Zenith's own voice, still ringing from the
-      // speakers, re-triggers a new utterance mid-reply ("double voice").
-      const ms = Math.round(total / LIVE_PCM_RATE * 1000);
-      liveReplyEnd = performance.now() + Math.max(250, ms);
-      console.log(`[zenith] live reply: ${liveTurnSamples.length} chunks, ${total} samples ≈ ${ms}ms`);
-      liveAudioStart = performance.now() + liveAudioCtx.currentTime * 1000;
-    } catch (e) { console.warn("[zenith] live play error:", e); }
+
+      const now = liveAudioCtx.currentTime;
+      if (liveNextPlayTime < now) {
+        liveNextPlayTime = now + 0.04;
+      }
+      src.start(liveNextPlayTime);
+      liveActiveSources.push(src);
+
+      src.onended = () => {
+        const idx = liveActiveSources.indexOf(src);
+        if (idx !== -1) liveActiveSources.splice(idx, 1);
+        if (liveActiveSources.length === 0 && !liveStreaming) {
+          refreshVoiceStatus();
+        }
+      };
+
+      liveNextPlayTime += buf.duration;
+      const msRemaining = (liveNextPlayTime - now) * 1000;
+      liveReplyEnd = performance.now() + Math.max(250, msRemaining);
+      liveAudioStart = performance.now();
+    } catch (e) {
+      console.warn("[zenith] live chunk queue error:", e);
+    }
+  }
+
+  function stopLivePlayback() {
+    for (const src of liveActiveSources) {
+      try { src.stop(); } catch {}
+    }
+    liveActiveSources = [];
+    liveNextPlayTime = 0;
+    liveStreaming = false;
+    liveReplyEnd = 0;
   }
 
   function liveStartModelAudio() {
@@ -6476,17 +6824,14 @@
     liveStreaming = false;
     liveUserDetectPending = true;
     if (voiceOpen() && audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-    setTimeout(() => { if (voiceOpen() && useLiveStreaming && !liveWsRefused) openLiveStreaming(); }, 180);
+    setTimeout(() => { if (voiceOpen() && useLiveStreaming && !liveWsRefused && !liveWs) openLiveStreaming(); }, 180);
   }
 
   function liveFinishUtterance() {
     if (!liveWs || liveWs.readyState !== WebSocket.OPEN) return;
-    // A new user turn is starting — the previous turn's reply is fully delivered
-    // (done) by now, so reset the accumulator for the reply we're about to get.
-    liveTurnSamples = [];
-    // Snap _uplinking off BEFORE sending the end signal so the model's reply
-    // (which streams right back while we're still between utterances) is
-    // treated as incoming audio, not rejected by the capture gate.
+    liveAssistantTranscript = "";
+    liveNextPlayTime = 0;
+    stopLivePlayback();
     if (liveWs) liveWs._uplinking = false;
     try { liveWs.send(JSON.stringify({ type: "end" })); } catch {}
   }
@@ -6499,11 +6844,16 @@
   }
 
   function resolveLive() {
-    if (voiceOpen() && audioCtx && micStream && !liveAudioCtx) wireLiveCapture();
-    if (voiceOpen() && liveWs) if (liveWs.readyState === WebSocket.CLOSED) openLiveStreaming();
+    if (voiceOpen() && audioCtx && micStream && !liveCaptureNode) wireLiveCapture();
+    if (voiceOpen() && liveWs && liveWs.readyState === WebSocket.CLOSED) openLiveStreaming();
   }
 
   function shutdownLive(closeSock) {
+    stopLivePlayback();
+    if (liveCaptureNode) {
+      try { liveCaptureNode.disconnect(); } catch {}
+      liveCaptureNode = null;
+    }
     if (liveWs) {
       if (closeSock) {
         try { if (liveWs.readyState === WebSocket.OPEN) liveWs.send(JSON.stringify({ type: "close" })); } catch {}
@@ -6513,8 +6863,8 @@
     }
     liveWsNominal = false;
     liveStreaming = false;
-    if (liveWs) { liveWs._uplinking = false; }
     if (liveGain) { try { liveGain.disconnect(); } catch {} liveGain = null; }
+    if (liveAnalyser) { try { liveAnalyser.disconnect(); } catch {} liveAnalyser = null; }
   }
 
   function setFlag() { /* reserved space for future live-state badges */ }
@@ -6594,7 +6944,9 @@
   }
 
   function isSpeakingState() {
-    return !!(window.zenithAudio && !window.zenithAudio.paused)
+    return (liveActiveSources.length > 0)
+      || (performance.now() < liveReplyEnd)
+      || !!(window.zenithAudio && !window.zenithAudio.paused)
       || (window.speechSynthesis && window.speechSynthesis.speaking);
   }
 
@@ -6650,7 +7002,11 @@
     // conversational distance with autoGainControl is around 0.02–0.08 RMS; the
     // old absFloor=0.012 + noise*2.2 made Zenith only pick up loud, close speech.
     const absFloor = 0.004;
-    const onThresh = Math.max(absFloor, noise * 1.6);
+    const isAssistantSpeaking = liveStreaming || isSpeakingState();
+    // During assistant speech, speech onset floor is raised slightly to prevent
+    // acoustic speaker bleed from false-triggering, while enabling natural voice barge-in.
+    const effectiveFloor = isAssistantSpeaking ? 0.016 : absFloor;
+    const onThresh = Math.max(effectiveFloor, noise * (isAssistantSpeaking ? 2.2 : 1.6));
     const offThresh = Math.max(absFloor * 0.5, noise * 1.05);
     const speechNow = rms > (vad.speech ? offThresh : onThresh);
 
@@ -6661,13 +7017,8 @@
       return;
     }
 
-    // While Zenith is talking (Live audio streaming, a fallback TTS reply, or a short
-// post-reply reverb tail), suppress NEW onsets — Zenith's own output re-entering
-// the mic (speaker pickup) would otherwise be detected as "speech" and trigger a
-// self-answering feedback loop that sounds like multiple people. Real barge-in
-// still works: VAD re-arms once Zenith stops and the tail passes.
-    if (!vad.speech && (liveStreaming || isSpeakingState() ||
-                        (liveReplyEnd && (t - liveReplyEnd) < 800))) {
+    // Brief settling delay right after audio ends to absorb room reverberation
+    if (!vad.speech && !isAssistantSpeaking && liveReplyEnd && (t - liveReplyEnd) < 250) {
       vad._onsetMs = 0;
       return;
     }
@@ -6686,7 +7037,7 @@
         vad.speech = true;
         vad.speechStartMs = t;
         vad._onsetMs = 0;
-        stopAssistantSpeech(); // barge-in (stops any playing reply)
+        stopAssistantSpeech(); // barge-in (stops any playing reply and resets live session)
         $("v-status").textContent = "voice · listening…";
         setVoiceState("listening");
         startMediaRecorder();
@@ -6721,30 +7072,13 @@
     setTimeout(() => { if (processingSpeech) sendRecordedAudio(); }, 120);
   }
 
-  // ── utterance transport ───────────────────────────────────────────
-  let useStreamingTTS = false;
-  let useLiveStreaming = false;   // server supports persistent /ws/live voice
-  // ── Gemini Live persistent tunnel (/ws/live) — the real-time voice plane ──
-  // When the voice layer is open and the server reports live_ready, we speak
-  // through a long-lived /ws/live WebSocket session: raw PCM16 (24 kHz) audio
-  // streams up as binary frames as you speak, and the model's native audio
-  // streams down as binary frames. Speech recognition, tool calls and reply
-  // synthesis all happen server-side — no per-utterance /api/transcribe hop.
-  let liveWs = null;                 // the persistent /ws/live session (if any)
-  let liveWsNominal = false;         // set once setupComplete lands on the client
-  let liveAudioCtx = null;           // decodes incoming model audio (PCM16)
-  let liveGain = null;               // master gain for the model's audio
-  let liveAudioStart = 0;            // performance.now() when model audio began
-  let liveTalkStart = 0;             // performance.now() when the user started speaking
-  let liveUserDetectPending = false; // wire a userUtteranceStarted event once
-  let liveWsRefused = false;         // server said "not available" — stick to classic path
-  let liveVoiceBright = false;       // set on the first streamed-voice event (UKI-style brightness)
-  let liveStreaming = false;         // a model audio stream is currently flowing
-  let liveAudioThisTurn = 0;        // bytes streamed for the current turn; 0 means the model silent-done
-  let liveReplyEnd = 0;             // performance.now() when the reply finished (post-reply echo mute tail)
-  let liveTurnSamples = [];         // Float32Array chunks of THIS turn's reply (played as one buffer on done)
-
   function stopAssistantSpeech() {
+    stopLivePlayback();
+    try {
+      if (liveWs && liveWs.readyState === WebSocket.OPEN) {
+        liveWs.send(JSON.stringify({ type: "barge_in" }));
+      }
+    } catch {}
     try {
       if (window.zenithAudio) { window.zenithAudio.pause(); window.zenithAudio = null; }
     } catch {}
@@ -6964,8 +7298,11 @@
   /* Play Gemini-Live native audio (a done event). */
   function playLiveAudio(b64, model, mime) {
     try {
-      const audioBytes = Uint8Array.from(atob(decodeURIComponent(b64)), (c) => c.charCodeAt(0));
-      const blob = new Blob([audioBytes], { type: mime || "audio/webm" }); // Live native-audio container
+      const rawB64 = b64.includes("%") ? decodeURIComponent(b64) : b64;
+      const binary = atob(rawB64);
+      const audioBytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) audioBytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([audioBytes], { type: mime || "audio/wav" }); // Live native-audio container
       const url = URL.createObjectURL(blob);
       stopAssistantSpeech();
       const audio = new Audio(url);
@@ -7038,17 +7375,18 @@
         return;
       }
       orbAnim = requestAnimationFrame(frame);
-      if (analyser) analyser.getByteFrequencyData(d);
+      const isSpeaking = liveStreaming || isSpeakingState();
+      const activeAnalyser = (isSpeaking && liveAnalyser) ? liveAnalyser : analyser;
+      if (activeAnalyser) activeAnalyser.getByteFrequencyData(d);
       let sum = 0;
       for (let i = 0; i < d.length; i++) sum += d[i];
       const t = sum / d.length;
-      volume += (t - volume) * 0.12;
+      volume += (t - volume) * 0.14;
 
       // Voice-activity detection shares the frame loop.
       vadFrame(performance.now());
       // Gentle idle breathing so the orb stays alive (and consistent).
-      if (!vad.speech && !processingSpeech && voicePaused === false &&
-          (!window.zenithAudio || window.zenithAudio.paused)) {
+      if (!vad.speech && !isSpeaking && !processingSpeech && voicePaused === false) {
         volume *= 1 - 0.015;
       }
 
@@ -7070,24 +7408,25 @@
       ctx.beginPath(); ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(124,111,247,0.45)";
       ctx.shadowColor = "rgba(124,111,247,0.55)";
-      ctx.shadowBlur = 16 + (vad.speech ? volume * 0.6 : 8);
+      ctx.shadowBlur = 16 + ((vad.speech || isSpeaking) ? volume * 0.6 : 8);
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Star only while actually capturing voice — otherwise constant sphere.
-      if (vad.speech && analyser) {
+      // Dynamic harmonic ripples while user speaks OR Zenith speaks
+      if ((vad.speech || isSpeaking) && activeAnalyser) {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.beginPath();
-        for (let i = 0; i < 14; i++) {
-          const an = (i / 14) * Math.PI * 2;
-          const di = (d[i % d.length] / 255) * 14 * Math.sin(phase + i);
+        const rays = isSpeaking ? 18 : 14;
+        for (let i = 0; i < rays; i++) {
+          const an = (i / rays) * Math.PI * 2;
+          const di = (d[i % d.length] / 255) * (isSpeaking ? 16 : 14) * Math.sin(phase + i);
           const rr = r + 10 + di;
           const x = Math.cos(an) * rr, y = Math.sin(an) * rr;
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        ctx.fillStyle = "rgba(138,126,255,0.35)";
+        ctx.fillStyle = isSpeaking ? "rgba(168,140,255,0.4)" : "rgba(138,126,255,0.35)";
         ctx.fill();
         ctx.restore();
       }

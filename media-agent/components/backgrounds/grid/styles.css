@@ -1,0 +1,29 @@
+.retro-grid-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: 260px;
+  pointer-events: none;
+  opacity: 0.25;
+}
+.retro-grid-plane {
+  position: absolute;
+  top: -60%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: linear-gradient(to right, var(--accent-1, #38bdf8) 1px, transparent 1px),
+                    linear-gradient(to bottom, var(--accent-1, #38bdf8) 1px, transparent 1px);
+  background-size: 50px 50px;
+  transform: rotateX(45deg);
+  animation: retro-grid-pan 15s linear infinite;
+}
+@keyframes retro-grid-pan {
+  0% { transform: rotateX(45deg) translateY(0); }
+  100% { transform: rotateX(45deg) translateY(50px); }
+}
+.retro-grid-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, var(--bg-color, #0d0f12) 20%, transparent 80%);
+}

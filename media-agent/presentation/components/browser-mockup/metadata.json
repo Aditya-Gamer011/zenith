@@ -1,0 +1,27 @@
+{
+  "id": "browser-mockup",
+  "name": "macOS Browser Frame Mockup",
+  "type": "component",
+  "tags": [
+    "mockup",
+    "browser",
+    "safari",
+    "product",
+    "demo"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "split-screen",
+    "product-reveal",
+    "features"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Safari-style desktop browser window chrome with colored traffic controls and URL address capsule.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

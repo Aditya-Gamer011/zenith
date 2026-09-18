@@ -741,6 +741,23 @@ SECRETS_CATALOG = [
             "Enable if running with the Docker socket (/var/run/docker.sock) mounted."
         ],
     },
+    {
+        "key": "REQUIRE_APPROVALS",
+        "label": "Require Approvals for Actions",
+        "category": "security",
+        "category_label": "Security & Permissions",
+        "category_icon": "shield",
+        "field_type": "switch",
+        "required": False,
+        "is_secret": False,
+        "default": "no",
+        "description": "Show a confirmation dock before running actions like sending emails, deploying, or changing DNS. Turn off for fully autonomous execution.",
+        "where_to_get_url": "",
+        "where_to_get_label": "",
+        "guide_steps": [
+            "Disable to let Zenith execute outbound emails and mutating actions automatically without asking for manual confirmation."
+        ],
+    },
 
     # ── Category 9: Art & Design Integrations ────────────────────────────────
     {

@@ -1,0 +1,25 @@
+{
+  "id": "morph",
+  "name": "PowerPoint Morph Transition",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "morph",
+    "transition",
+    "seamless"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "process",
+    "bento"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Seamless slide-to-slide geometric transformation animating matching elements between slides.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -1,0 +1,24 @@
+{
+  "id": "spotlight",
+  "name": "Dynamic Key Spotlight",
+  "type": "effect",
+  "tags": [
+    "spotlight",
+    "lighting",
+    "focus",
+    "theatrical"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "split-screen"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Theatrical overhead key light highlighting hero subject while falloff darkens edges.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

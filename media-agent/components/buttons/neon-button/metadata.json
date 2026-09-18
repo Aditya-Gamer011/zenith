@@ -1,0 +1,37 @@
+{
+  "id": "neon-button",
+  "name": "Cyber Neon Glow Button",
+  "category": "button",
+  "source": "uiverse",
+  "tags": [
+    "neon",
+    "cyberpunk",
+    "glow",
+    "glow-border",
+    "cta"
+  ],
+  "framework": "html",
+  "motion": "glow-pulse",
+  "intensity": 4,
+  "best_for": [
+    "hero",
+    "CTA",
+    "dark-mode"
+  ],
+  "description": "High-contrast glowing neon button with animated laser border and chromatic aura.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const NeonButton: React.FC<{ children?: React.ReactNode; onClick?: () => void }> = ({\n  children = \"Get Started\",\n  onClick\n}) => {\n  return (\n    <button onClick={onClick} className=\"neon-glow-btn\">\n      <span>{children}</span>\n    </button>\n  );\n};\n",
+    "css": ".neon-glow-btn {\n  position: relative;\n  padding: 14px 34px;\n  background: #0d0f14;\n  color: var(--accent-1, #00f3ff);\n  border: 2px solid var(--accent-1, #00f3ff);\n  border-radius: 8px;\n  font-family: var(--font-heading, inherit);\n  font-size: 0.95rem;\n  font-weight: 700;\n  text-transform: uppercase;\n  letter-spacing: 2px;\n  cursor: pointer;\n  transition: all 0.3s ease;\n  box-shadow: 0 0 10px var(--glow-color, rgba(0, 243, 255, 0.3));\n}\n.neon-glow-btn:hover {\n  background: var(--accent-1, #00f3ff);\n  color: #0d0f14;\n  box-shadow: 0 0 30px var(--accent-1, #00f3ff), 0 0 60px var(--glow-color, rgba(0, 243, 255, 0.6));\n}\n",
+    "html": "<button class=\"neon-glow-btn\"><span>Initiate Protocol</span></button>"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

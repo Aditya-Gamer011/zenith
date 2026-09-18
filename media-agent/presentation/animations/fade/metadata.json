@@ -1,0 +1,25 @@
+{
+  "id": "fade",
+  "name": "Smooth Opacity Dissolve",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "fade",
+    "dissolve",
+    "subtle"
+  ],
+  "visualIntensity": 2,
+  "bestFor": [
+    "statement",
+    "editorial",
+    "case-study"
+  ],
+  "compatibleStyles": [
+    "minimal-premium",
+    "premium-editorial"
+  ],
+  "description": "Subtle 0.4s cross-fade transition preserving dignified visual quietude.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

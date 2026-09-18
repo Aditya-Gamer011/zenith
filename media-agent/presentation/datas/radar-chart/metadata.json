@@ -1,0 +1,27 @@
+{
+  "id": "radar-chart",
+  "name": "Radar Capability Map",
+  "type": "data",
+  "tags": [
+    "chart",
+    "radar",
+    "spider",
+    "capabilities",
+    "matrix",
+    "data"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "data-story",
+    "comparison",
+    "capabilities"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Polygonal capability matrix benchmarking multiple operational vectors simultaneously.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

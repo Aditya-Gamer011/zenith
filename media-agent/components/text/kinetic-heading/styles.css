@@ -1,0 +1,20 @@
+.kinetic-heading {
+  font-family: var(--font-heading, 'Inter', sans-serif);
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text-color, #ffffff);
+}
+.kinetic-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(24px) rotate(2deg);
+  animation: kinetic-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes kinetic-in {
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}

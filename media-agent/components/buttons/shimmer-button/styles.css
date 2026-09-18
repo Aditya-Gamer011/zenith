@@ -1,0 +1,35 @@
+.shimmer-button-wrap {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  padding: 1.5px;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+}
+.shimmer-button-conic {
+  position: absolute;
+  inset: -150%;
+  background: conic-gradient(from 0deg at 50% 50%, var(--accent-1, #d4a373) 0deg, var(--accent-2, #3b82f6) 180deg, var(--accent-1, #d4a373) 360deg);
+  animation: shimmer-spin 4s linear infinite;
+}
+@keyframes shimmer-spin {
+  to { transform: rotate(360deg); }
+}
+.shimmer-button-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 28px;
+  border-radius: 9999px;
+  background: var(--bg-color, #0d0f12);
+  color: var(--text-color, #f4f4f6);
+  font-family: var(--font-heading, sans-serif);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+.shimmer-button-wrap:hover .shimmer-button-inner {
+  background: var(--card-bg, #181b20);
+}

@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from .config import settings
+
 
 class ToolValidationError(Exception):
     """Raised when the model's arguments fail the tool's JSON-schema-ish check."""
@@ -99,6 +101,7 @@ def catalog() -> list[dict[str, Any]]:
 EXECUTIVE_TOOL_NAMES = [
     "delegate_task",
     "delegate_parallel",
+    "delegate_pipeline",
     "share_finding",
     "query_findings",
     "list_agents",
@@ -111,6 +114,12 @@ EXECUTIVE_TOOL_NAMES = [
     "setup_secret",
     "get_setup_status",
     "zenith_docs",
+    "shell",
+    "read_file",
+    "write_file",
+    "list_dir",
+    "get_host_paths",
+    "get_system_info",
 ]
 
 
@@ -197,7 +206,7 @@ async def call_tool(
                     "error": "Action cancelled — user didn't approve it."}
 
     try:
-        if name in ("delegate_task", "delegate_parallel", "ask_specialist") and emit is not None:
+        if name in ("delegate_task", "delegate_parallel", "delegate_pipeline", "ask_specialist") and emit is not None:
             result = await tool["handler"](**validated, emit=emit)
         else:
             result = await tool["handler"](**validated)
@@ -291,6 +300,12 @@ async def tool_get_system_info(detail_level: str = "summary") -> str:
     if str(detail_level).lower() in ("full", "detailed", "markdown", "all"):
         return format_host_details_markdown()
     return format_host_summary()
+
+
+async def tool_get_host_paths() -> str:
+    """Introspect the real host operating system (Linux, macOS, Windows) and resolved user directories."""
+    from zenith.tools.host_paths import format_host_paths_summary
+    return format_host_paths_summary()
 
 
 async def tool_get_available_tools(category: str = "", query: str = "") -> str:
@@ -711,6 +726,11 @@ async def tool_delegate_parallel(tasks: Any, context: str = "", emit: Any = None
     return await delegate_parallel(tasks, context=context, emit=emit)
 
 
+async def tool_delegate_pipeline(steps: Any, initial_context: str = "", emit: Any = None) -> str:
+    from zenith.tools.agent import delegate_pipeline
+    return await delegate_pipeline(steps, initial_context=initial_context, emit=emit)
+
+
 async def tool_ask_specialist(department: str, question: str, context: str = "", emit: Any = None) -> str:
     from zenith.tools.agent import ask_specialist
     return await ask_specialist(department, question, context=context, emit=emit)
@@ -959,7 +979,7 @@ async def tool_email_draft(to: str, subject: str, body: str, attachment_path: st
     return await tool_email_send(to, subject, body, attachment_path)
 
 
-async def tool_email_send(to: str, subject: str, body: str, attachment_path: str = "", attachment_paths: list[str] | None = None) -> str:
+async def tool_email_send(to: str, subject: str, body: str, attachment_path: str = "", attachment_paths: list[str] | None = None, **kwargs) -> str:
     from zenith.tools import mail
     from pathlib import Path
     import re
@@ -1100,6 +1120,158 @@ async def tool_generate_pptx(
         template=template,
         transition=transition,
     )
+
+
+async def tool_generate_presentation(
+    title: str,
+    topic: str = "",
+    theme: str = "",
+    style: str = "",
+    slides: list[dict] | str = "",
+    subtitle: str = "",
+    author: str = "",
+    format: str = "both",
+    motion_intensity: str = "high",
+) -> str:
+    from ..core.config import settings
+    author = author or settings.user_name or "Zenith Studio"
+    from zenith.tools.artifact_pipeline import generate_presentation
+    return await generate_presentation(
+        title=title,
+        topic=topic,
+        theme=theme,
+        style=style,
+        slides=slides,
+        subtitle=subtitle,
+        author=author,
+        format=format,
+        motion_intensity=motion_intensity,
+    )
+
+
+async def tool_presentation_plan(
+    title: str,
+    topic: str = "",
+    num_slides: int = 8,
+    style: str = "",
+    theme: str = "",
+) -> str:
+    from zenith.tools.artifact_pipeline import presentation_plan
+    return await presentation_plan(
+        title=title,
+        topic=topic,
+        num_slides=num_slides,
+        style=style,
+        theme=theme,
+    )
+
+
+async def tool_presentation_search_components(
+    query: str = "",
+    type: str = "",
+    intensity: int = 5,
+    style: str = "",
+) -> str:
+    from zenith.tools.artifact_pipeline import presentation_search_components
+    return await presentation_search_components(
+        query=query,
+        type=type,
+        intensity=intensity,
+        style=style,
+    )
+
+
+async def tool_presentation_critique(
+    deck_id: str = "",
+) -> str:
+    from zenith.tools.artifact_pipeline import presentation_critique
+    return await presentation_critique(deck_id=deck_id)
+
+
+async def tool_presentation_inspect_palette(
+    theme: str = "editorial_slate",
+) -> str:
+    from zenith.tools.artifact_pipeline import presentation_inspect_palette
+    return await presentation_inspect_palette(theme=theme)
+
+
+async def tool_edit_presentation(
+    deck_id: str,
+    action: str,
+    slide_number: int = 0,
+    modifications: dict | str = "",
+) -> str:
+    from zenith.tools.artifact_pipeline import edit_presentation
+    return await edit_presentation(
+        deck_id=deck_id,
+        action=action,
+        slide_number=slide_number,
+        modifications=modifications,
+    )
+
+
+async def tool_preview_presentation(deck_id: str) -> str:
+    from zenith.tools.artifact_pipeline import preview_presentation
+    return preview_presentation(deck_id=deck_id)
+
+
+async def tool_list_design_themes() -> str:
+    from zenith.tools.design_system import THEMES
+    import json
+    summary = {}
+    for tid, t in THEMES.items():
+        colors = t.get("colors", {})
+        summary[tid] = {
+            "name": t["name"],
+            "description": t["description"],
+            "palette": {
+                "bg": colors.get("bg", ""),
+                "card_bg": colors.get("card", ""),
+                "accent": colors.get("accent1", ""),
+                "text": colors.get("text", ""),
+            },
+        }
+    return json.dumps(summary, indent=2)
+
+
+# ── Visual Vocabulary & Component Registry Handlers ─────────────────────────
+async def tool_component_search(
+    query: str = "",
+    category: str = "",
+    source: str = "",
+    motion: str = "",
+    min_intensity: int = 0,
+    max_intensity: int = 5,
+    limit: int = 10,
+) -> str:
+    from zenith.tools.design_components import component_search
+    return await component_search(query, category, source, motion, min_intensity, max_intensity, limit)
+
+
+async def tool_component_get(component_id: str) -> str:
+    from zenith.tools.design_components import component_get
+    return await component_get(component_id)
+
+
+async def tool_component_adapt(component_id: str, theme: str = "editorial_slate", custom_colors: str = "") -> str:
+    from zenith.tools.design_components import component_adapt
+    return await component_adapt(component_id, theme, custom_colors)
+
+
+async def tool_component_compose_page(
+    title: str = "Zenith Sovereign Intelligence",
+    theme: str = "editorial_slate",
+    brief: str = "",
+    hero_cta: str = "Launch Sovereign Environment",
+    hero_bg: str = "aurora-background",
+) -> str:
+    from zenith.tools.design_components import component_compose_page
+    return await component_compose_page(title, theme, brief, hero_cta, hero_bg)
+
+
+async def tool_component_catalog_summary() -> str:
+    from zenith.tools.design_components import component_catalog_summary
+    return await component_catalog_summary()
 
 
 async def tool_list_pptx_themes() -> str:
@@ -1249,6 +1421,21 @@ async def tool_edit_image(
 ) -> str:
     from zenith.tools.file_processor import edit_image
     return await edit_image(image_path, action, width, height, angle, target_format, watermark_text)
+
+
+async def tool_read_presentation(file_path: str, max_slides: int = 50) -> str:
+    from zenith.tools.file_processor import read_presentation
+    return await read_presentation(file_path, max_slides)
+
+
+async def tool_read_spreadsheet(
+    file_path: str,
+    sheet_name: str = "",
+    max_rows: int = 100,
+    max_cols: int = 20,
+) -> str:
+    from zenith.tools.file_processor import read_spreadsheet
+    return await read_spreadsheet(file_path, sheet_name, max_rows, max_cols)
 
 
 async def tool_analyze_file(file_path: str) -> str:
@@ -2081,6 +2268,27 @@ register("delegate_parallel", "Delegate multiple domain tasks to departmental sp
     "required": ["tasks"],
 }, tool_delegate_parallel)
 
+register("delegate_pipeline", "Execute a multi-stage sequential pipeline of specialized agent tasks where subsequent steps depend on deliverables from earlier steps (e.g. step 1: creative generates a presentation or document; step 2: communication sends an email with the generated links/files). Each step receives accumulated context and outputs from preceding steps.", {
+    "type": "object",
+    "properties": {
+        "steps": {
+            "type": "array",
+            "description": "Ordered list of step objects to execute sequentially. Each object must have 'department' and 'task'.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "department": {"type": "string", "description": "Target department name or custom agent ID."},
+                    "task": {"type": "string", "description": "Actionable task or instructions for this pipeline step."},
+                    "context": {"type": "string", "description": "Optional step-specific instructions or guidance."},
+                },
+                "required": ["department", "task"],
+            },
+        },
+        "initial_context": {"type": "string", "description": "Optional initial background context provided to the first step."},
+    },
+    "required": ["steps"],
+}, tool_delegate_pipeline)
+
 register("ask_specialist", "Consult another specialized departmental agent in Zenith for peer expertise, cross-department assistance, or domain data (e.g. coding asking operations about a port, or creative asking research for facts).", {
     "type": "object",
     "properties": {
@@ -2398,12 +2606,12 @@ register("email_draft", "Send an email immediately to a recipient (to, subject, 
     "required": ["to", "subject", "body"],
 }, tool_email_draft)
 
-register("email_send", "Send an email (to, subject, body) with one or more file attachments. Sends via Resend/SMTP. Supports PDFs, Word docs, spreadsheets, code, images — any file up to 25MB each. Pass the EXACT path(s) returned by generate_* to attachment_path (singular) or attachment_paths (multiple, for sending several files in one email).", {
+register("email_send", f"Send an email (to, subject, body) with one or more file attachments. Transmits via Resend from Zenith's designated system address ({settings.resend_from}). Never sends from the user's personal email. Supports PDFs, Word docs, spreadsheets, code, images — any file up to 25MB each. Pass the EXACT path(s) returned by generate_* to attachment_path (singular) or attachment_paths (multiple, for sending several files in one email).", {
     "type": "object",
     "properties": {
-        "to": {"type": "string"},
-        "subject": {"type": "string"},
-        "body": {"type": "string"},
+        "to": {"type": "string", "description": "Recipient email address (e.g. user@example.com)."},
+        "subject": {"type": "string", "description": "Subject line."},
+        "body": {"type": "string", "description": "Email body text."},
         "attachment_path": {"type": "string", "description": "Absolute path to a single file to attach. Optional. Copy it verbatim from the generate_* tool result."},
         "attachment_paths": {"type": "array", "items": {"type": "string"}, "description": "Absolute paths of MULTIPLE files to attach in the same email. Optional. Use when the user asks for several files together."},
     },
@@ -2566,6 +2774,11 @@ register("get_system_info", "Grab detailed info about the host machine, server, 
         "detail_level": {"type": "string", "default": "summary", "description": "'summary' for concise overview, 'full' for detailed markdown report."},
     },
 }, tool_get_system_info)
+
+register("get_host_paths", "Inspect the real host operating system (Linux, macOS, Windows) and resolved user directories (Desktop, Downloads, Documents, Pictures, Videos, Music, Home, Workspace).", {
+    "type": "object",
+    "properties": {},
+}, tool_get_host_paths)
 
 register("get_available_tools", "List and explore all tools available in Zenith, their parameters, descriptions, and categories. Useful for self-introspection and discovering capabilities.", {
     "type": "object",
@@ -3136,6 +3349,169 @@ register("research_synthesis", "[Alias for 'deep_research'] Multi-query search a
     "required": ["topic"],
 }, tool_research_synthesis, hidden_from_catalog=True)
 
+register("generate_presentation", "Generate a Studio-Grade presentation with BOTH an interactive 3D Web Presentation (Three.js WebGL canvas, 3D card tilt, keyboard arrows, fullscreen, speaker notes) AND a designer-grade editable PowerPoint (.pptx) file. Follows creative studio practices with automated quality control loop (density, overflow, contrast checks). Themes avoid AI neon slop by default (defaults to editorial_slate or context-aware themes like boba_bash, swiss_clean, terracotta_warm, nordic_navy, executive_mono).", {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Presentation main title."},
+        "topic": {"type": "string", "description": "Subject or industry (used to intelligently infer the best human-crafted theme and imagery)."},
+        "theme": {
+            "type": "string",
+            "enum": ["editorial_slate", "boba_bash", "swiss_clean", "terracotta_warm", "nordic_navy", "executive_mono", "cyberpunk_neon"],
+            "description": "Optional named design theme. Defaults to editorial_slate or topic-inferred theme.",
+        },
+        "style": {
+            "type": "string",
+            "enum": ["cinematic-futuristic", "premium-editorial", "experimental-creative", "playful-youthful", "minimal-premium"],
+            "description": "Visual style system (Creative Director). Controls palette, typography hierarchy, 3D asset treatment, and visual rhythm.",
+        },
+        "subtitle": {"type": "string", "description": "Optional presentation subtitle or tagline."},
+        "author": {"type": "string", "description": "Author or presenter name."},
+        "slides": {
+            "type": "array",
+            "description": "List of slide specifications. Layouts include: hero_title, split_hero, cards_grid, stat_hero, comparison, timeline, quote_callout, chapter_divider.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Slide title"},
+                    "layout": {
+                        "type": "string",
+                        "enum": ["hero_title", "split_hero", "cards_grid", "stat_hero", "comparison", "timeline", "quote_callout", "chapter_divider"],
+                        "description": "Slide layout primitive",
+                    },
+                    "subtitle": {"type": "string", "description": "Optional slide section subtitle"},
+                    "tag": {"type": "string", "description": "Optional category chip/tag (e.g. '01 ARCHITECTURE')"},
+                    "bullets": {"type": "array", "items": {"type": "string"}, "description": "Bullet points (max 4 per slide, crisp)"},
+                    "cards": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "points": {"type": "array", "items": {"type": "string"}},
+                            },
+                            "required": ["title"],
+                        },
+                        "description": "Card columns for cards_grid layout",
+                    },
+                    "stats": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "number": {"type": "string"},
+                                "label": {"type": "string"},
+                                "sub": {"type": "string"},
+                            },
+                            "required": ["number", "label"],
+                        },
+                        "description": "Key metric cards for stat_hero layout",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "desc": {"type": "string"},
+                            },
+                            "required": ["title"],
+                        },
+                        "description": "Milestone items for timeline layout",
+                    },
+                    "columns": {"type": "array", "items": {"type": "string"}, "description": "Header columns for comparison layout"},
+                    "rows": {"type": "array", "description": "Row data for comparison layout"},
+                    "quote": {"type": "string", "description": "Quote text for quote_callout layout"},
+                    "image_query": {"type": "string", "description": "Descriptive search query for slide photo"},
+                    "notes": {"type": "string", "description": "Presenter speaker notes for the slide"},
+                },
+                "required": ["title"],
+            },
+        },
+        "format": {"type": "string", "enum": ["both", "web", "pptx"], "default": "both", "description": "Artifact output format."},
+        "motion_intensity": {"type": "string", "enum": ["low", "medium", "high"], "default": "high", "description": "Ambient 3D motion level for web presentation."},
+    },
+    "required": ["title"],
+}, tool_generate_presentation)
+
+register("presentation_plan", "Plan a structured presentation deck following Visual Rhythm and Visual Style guidelines before generating. Returns slide cadence, recommended layouts, visual intensity, and transitions.", {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Presentation main title."},
+        "topic": {"type": "string", "description": "Subject or industry focus."},
+        "num_slides": {"type": "integer", "default": 8, "description": "Target number of slides."},
+        "style": {
+            "type": "string",
+            "enum": ["cinematic-futuristic", "premium-editorial", "experimental-creative", "playful-youthful", "minimal-premium"],
+            "description": "Desired visual style. If blank, intelligently inferred from topic.",
+        },
+        "theme": {"type": "string", "description": "Optional theme name."},
+    },
+    "required": ["title"],
+}, tool_presentation_plan)
+
+register("presentation_search_components", "Search the presentation component registry for layouts, visual components, effects, typography treatments, and 3D assets.", {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search keyword or intent (e.g. 'hero', 'bento', 'timeline', 'metric', '3d')."},
+        "type": {
+            "type": "string",
+            "enum": ["layout", "component", "effect", "typography", "data", "3d", "animation"],
+            "description": "Filter by component type.",
+        },
+        "intensity": {"type": "integer", "default": 5, "description": "Maximum visual intensity (1-5)."},
+        "style": {"type": "string", "description": "Filter by compatible visual style."},
+    },
+}, tool_presentation_search_components)
+
+register("presentation_critique", "Run the Visual Quality Critic on an existing presentation or plan. Analyzes layout density, bullet count, title length, contrast, rhythm, and produces an automated quality score (0-100) with actionable recommendations.", {
+    "type": "object",
+    "properties": {
+        "deck_id": {"type": "string", "description": "Optional artifact ID of presentation to critique. If blank, critiques sample quality audit."},
+    },
+}, tool_presentation_critique)
+
+register("presentation_inspect_palette", "Inspect a presentation color palette and its WCAG 2.1 contrast compliance ratings, luminance values, color tokens, and accessibility metrics.", {
+    "type": "object",
+    "properties": {
+        "theme": {
+            "type": "string",
+            "description": "Theme name to inspect (e.g. 'editorial_slate', 'boba_bash', 'swiss_clean', 'terracotta_warm', 'nordic_navy', 'executive_mono', 'cyberpunk_neon').",
+            "default": "editorial_slate",
+        },
+    },
+}, tool_presentation_inspect_palette)
+
+register("edit_presentation", "Iteratively modify an existing presentation artifact by ID without starting from scratch. Supports changing themes, updating slide text/layout/cards, appending new slides, or deleting slides.", {
+    "type": "object",
+    "properties": {
+        "deck_id": {"type": "string", "description": "Artifact ID of the presentation to modify (e.g. 'deck_Quantum_Computing_1710000000')."},
+        "action": {
+            "type": "string",
+            "enum": ["update_slide", "change_theme", "add_slide", "remove_slide"],
+            "description": "Edit action to perform.",
+        },
+        "slide_number": {"type": "integer", "description": "Target slide index (1-indexed, e.g. 1 for first slide). Required for update_slide and remove_slide.", "default": 0},
+        "modifications": {
+            "type": "object",
+            "description": "Dictionary of changes. For update_slide/add_slide: {title, subtitle, layout, bullets, cards, stats, notes}. For change_theme: {theme: 'boba_bash'}.",
+        },
+    },
+    "required": ["deck_id", "action"],
+}, tool_edit_presentation)
+
+register("preview_presentation", "Quickly get the live viewer link and metadata for a previously generated presentation deck.", {
+    "type": "object",
+    "properties": {
+        "deck_id": {"type": "string", "description": "Artifact ID of the presentation deck."},
+    },
+    "required": ["deck_id"],
+}, tool_preview_presentation)
+
+register("list_design_themes", "List available human-crafted design themes for presentations and documents (editorial_slate, boba_bash, swiss_clean, terracotta_warm, nordic_navy, executive_mono, cyberpunk_neon) with their color palettes and styling rationale.", {
+    "type": "object",
+    "properties": {},
+}, tool_list_design_themes)
+
 register("generate_pptx", "Generate a PowerPoint presentation (.pptx) file. ALWAYS use this tool whenever the user asks for a presentation, slides, PPT, or PowerPoint deck. IMPORTANT: build a topical `slides` array from the actual topic (e.g. for 'lions' every slide must be about lions — habitat, diet, behaviour, species, conservation), each slide with a descriptive `image_query` for its web photo. Do NOT use the `template` parameter for a topic deck — `template` is ONLY for when the user explicitly requests a pitch_deck / tech_overview / market_analysis structure. If you supply `slides`, it completely defines the deck; `template` is ignored when slides are given. Supports visual themes (executive_dark, cyberpunk_neon, corporate_light, emerald_forest, sunset_warm, midnight_violet), transitions (fade, push, wipe, zoom), visual layout primitives (photo_hero, stat_hero, timeline, cards_grid, split_hero, comparison, quote, chapter_divider), and embedded web photos.", {
     "type": "object",
     "properties": {
@@ -3355,7 +3731,27 @@ register("edit_image", "Edit, transform, or convert an image (action: 'resize', 
     "required": ["image_path", "action"],
 }, tool_edit_image)
 
-register("analyze_file", "Inspect and extract content/structure from a user-uploaded file (PDF, Word doc, Excel sheet, CSV, JSON, code file).", {
+register("read_presentation", "Read, parse, and analyze a PowerPoint presentation (.pptx), extracting slide titles, bullet points, structured tables, and speaker notes.", {
+    "type": "object",
+    "properties": {
+        "file_path": {"type": "string", "description": "Path or filename of the PowerPoint presentation (.pptx)."},
+        "max_slides": {"type": "integer", "description": "Maximum number of slides to read and format (default 50).", "default": 50},
+    },
+    "required": ["file_path"],
+}, tool_read_presentation)
+
+register("read_spreadsheet", "Read, parse, and format an Excel spreadsheet (.xlsx, .xlsm) or CSV/TSV file as structured Markdown tables.", {
+    "type": "object",
+    "properties": {
+        "file_path": {"type": "string", "description": "Path or filename of the Excel spreadsheet (.xlsx, .xlsm) or CSV/TSV file."},
+        "sheet_name": {"type": "string", "description": "Optional worksheet name to inspect. If blank, lists all sheets and details primary sheets.", "default": ""},
+        "max_rows": {"type": "integer", "description": "Maximum number of data rows to display per sheet (default 100).", "default": 100},
+        "max_cols": {"type": "integer", "description": "Maximum number of columns to display per sheet (default 20).", "default": 20},
+    },
+    "required": ["file_path"],
+}, tool_read_spreadsheet)
+
+register("analyze_file", "Inspect and extract content/structure from a user-uploaded file (PowerPoint presentation, Excel spreadsheet, CSV, PDF, Word doc, JSON, code file).", {
     "type": "object",
     "properties": {
         "file_path": {"type": "string", "description": "Path to the uploaded or local file."},
@@ -3776,6 +4172,55 @@ register("zenith_docs", "Look up Zenith's internal documentation, tool specifica
         "topic": {"type": "string", "default": "all", "description": "Documentation topic ('overview', 'tools', 'deployment', 'agent', 'all', or tool keyword)."}
     },
 }, tool_zenith_docs)
+
+# ── Visual Vocabulary & Component Registry Tool Registrations ────────────────
+register("component_search", "Search visual vocabulary UI components across Uiverse (3,800+ elements), Aceternity UI, Magic UI, Three.js, GSAP, and Zenith. Filter by category, motion, intensity, or library source.", {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search term (e.g. 'cta', 'neon', 'tilt', 'particles', 'aurora', 'bento')."},
+        "category": {"type": "string", "description": "Category ('button', 'card', 'background', 'text', 'effects', 'mockup', 'three_r3f', 'gsap')."},
+        "source": {"type": "string", "description": "Library source ('uiverse', 'aceternity', 'magicui', 'threejs', 'gsap', 'zenith')."},
+        "motion": {"type": "string", "description": "Motion type ('hover', 'magnetic', '3d', 'particles', 'shimmer', 'glitch')."},
+        "min_intensity": {"type": "integer", "default": 0, "description": "Minimum visual intensity (1 to 5)."},
+        "max_intensity": {"type": "integer", "default": 5, "description": "Maximum visual intensity (1 to 5)."},
+        "limit": {"type": "integer", "default": 10, "description": "Max results to return."},
+    },
+}, tool_component_search)
+
+register("component_get", "Retrieve full metadata, TSX, CSS, and HTML code for a specific UI component in the visual vocabulary registry.", {
+    "type": "object",
+    "properties": {
+        "component_id": {"type": "string", "description": "Unique component ID (e.g. 'magnetic-neon-button', 'glass-card', 'aurora-background', '3d-card')."},
+    },
+    "required": ["component_id"],
+}, tool_component_get)
+
+register("component_adapt", "Adapt a visual component to a target brand design theme (editorial_slate, boba_bash, cyberpunk_neon, swiss_clean, nordic_navy, executive_mono, terracotta_warm) with automatic semantic CSS variable mapping.", {
+    "type": "object",
+    "properties": {
+        "component_id": {"type": "string", "description": "Unique component ID to adapt."},
+        "theme": {"type": "string", "default": "editorial_slate", "description": "Design theme name."},
+        "custom_colors": {"type": "string", "default": "", "description": "Optional JSON dictionary of color overrides."},
+    },
+    "required": ["component_id"],
+}, tool_component_adapt)
+
+register("component_compose_page", "Synthesize a complete responsive HTML5 landing page composed of visual vocabulary primitives (Aurora background, particle field, 3D WebGL Torus, Bento grid, 3D tilt cards, Safari browser mockup, interactive cursor, and animated gradient mesh footer).", {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "default": "Zenith Sovereign Intelligence", "description": "Page title and headline."},
+        "theme": {"type": "string", "default": "editorial_slate", "description": "Design theme name."},
+        "brief": {"type": "string", "default": "", "description": "Conceptual brief describing the landing page goal."},
+        "hero_cta": {"type": "string", "default": "Launch Sovereign Environment", "description": "Call-to-action button text."},
+        "hero_bg": {"type": "string", "default": "aurora-background", "description": "Hero background primitive ('aurora-background', 'interactive-particles', 'retro-grid')."},
+    },
+}, tool_component_compose_page)
+
+register("component_catalog_summary", "Get live statistics of the visual vocabulary library across all sources (Uiverse, Aceternity, Magic UI, Three.js, GSAP, Zenith) and categories.", {
+    "type": "object",
+    "properties": {},
+}, tool_component_catalog_summary)
+
 
 
 AGENT_SYSTEM_SUFFIX = "\nWhen you plan to act, prefer the smallest tool that satisfies it. You are Zenith's delegation layer."

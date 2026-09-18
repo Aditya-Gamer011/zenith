@@ -40,8 +40,9 @@ TOOL_CATEGORIES = {
     },
     "multimedia_design": {
         "label": "🎨 Multimedia, Documents & Design",
-        "prefixes": ("generate_", "list_pptx", "fetch_stock_photo", "search_presentation_photos",
-                     "analyze_file", "analyze_image", "edit_image", "modify_file", "delete_generated_file",
+        "prefixes": ("generate_", "edit_presentation", "preview_presentation", "list_design_themes",
+                     "list_pptx", "fetch_stock_photo", "search_presentation_photos",
+                     "analyze_file", "read_presentation", "read_spreadsheet", "analyze_image", "edit_image", "modify_file", "delete_generated_file",
                      "list_generated_files", "cdn_", "figma_", "canva_", "design_"),
     },
     "smart_home_homelab": {

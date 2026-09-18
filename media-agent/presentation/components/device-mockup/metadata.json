@@ -1,0 +1,26 @@
+{
+  "id": "device-mockup",
+  "name": "Hardware Device Mockup Frame",
+  "type": "component",
+  "tags": [
+    "mockup",
+    "device",
+    "hardware",
+    "terminal",
+    "iot"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "split-screen",
+    "cinematic-hero",
+    "hardware"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Sleek modern terminal device frame displaying live system telemetry or dashboards.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

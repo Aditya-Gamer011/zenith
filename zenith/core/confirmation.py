@@ -36,6 +36,9 @@ _CONFIRM_MESSAGES: dict[str, str] = {}
 
 def confirm_tools() -> tuple[str, ...]:
     """Which tools require a confirmation checkpoint."""
+    from .config import settings
+    if not getattr(settings, "require_approvals", False):
+        return ()
     return _DEFAULT_CONFIRM_TOOLS
 
 
@@ -51,7 +54,7 @@ class ConfirmGate:
     def __init__(self, timeout: float = 180.0, emit: Callable | None = None) -> None:
         self.timeout = timeout
         self.emit = emit
-        self._pending: dict[int, asyncio.Future] = {}
+        self._pending: dict[int, dict[str, Any]] = {}
         self._seq = 0
 
     def needs_gate(self, tool: str) -> bool:
@@ -65,6 +68,20 @@ class ConfirmGate:
         summary = ", ".join(f"{k}={str(v)[:40]}" for k, v in list(args.items())[:3])
         return f"Zenith wants to run `{tool}`" + (f" — {summary}" if summary else "") + "."
 
+    def get_pending(self) -> list[dict[str, Any]]:
+        """Return all active uncompleted confirmations so reconnecting clients can render the dock."""
+        out = []
+        for cid, data in list(self._pending.items()):
+            fut = data.get("future")
+            if fut and not fut.done():
+                out.append({
+                    "id": cid,
+                    "tool": data.get("tool", ""),
+                    "message": data.get("message", ""),
+                    "created_at": data.get("created_at", 0),
+                })
+        return out
+
     async def request(self, tool: str, arguments: dict[str, Any]) -> bool:
         """Create a pending confirmation, emit the dock event, await a decision.
 
@@ -73,7 +90,14 @@ class ConfirmGate:
         cid = self._next_id()
         loop = asyncio.get_running_loop()
         fut: asyncio.Future = loop.create_future()
-        self._pending[cid] = fut
+        desc = self.describe(tool, arguments)
+        self._pending[cid] = {
+            "future": fut,
+            "tool": tool,
+            "arguments": arguments,
+            "message": desc,
+            "created_at": time.time(),
+        }
         try:
             if self.emit:
                 try:
@@ -81,7 +105,7 @@ class ConfirmGate:
                         "type": "confirm",
                         "id": cid,
                         "tool": tool,
-                        "message": self.describe(tool, arguments),
+                        "message": desc,
                     })
                 except Exception:
                     pass
@@ -98,8 +122,11 @@ class ConfirmGate:
         return self._seq + id(self) * 1000  # process-unique, monotonic
 
     def resolve(self, cid: int, decision: bool) -> bool:
-        """Satisfy a pending confirmation with a decision. False if unknown."""
-        fut = self._pending.get(cid)
+        """Satisfy a pending confirmation with a decision. False if unknown or expired."""
+        data = self._pending.get(cid)
+        if data is None:
+            return False
+        fut = data.get("future")
         if fut is None or fut.done():
             return False
         fut.set_result(decision)

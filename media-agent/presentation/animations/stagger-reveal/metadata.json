@@ -1,0 +1,27 @@
+{
+  "id": "stagger-reveal",
+  "name": "Staggered Entrance Sequence",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "stagger",
+    "reveal",
+    "motion"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "cards",
+    "bento",
+    "timeline",
+    "process"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "playful-youthful"
+  ],
+  "description": "Cascading sequential reveal with 0.12s staggered delay between cards and nodes.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

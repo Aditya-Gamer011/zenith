@@ -1,0 +1,37 @@
+{
+  "id": "kinetic-heading",
+  "name": "Kinetic Stagger Headline",
+  "category": "text",
+  "source": "zenith",
+  "tags": [
+    "kinetic",
+    "typography",
+    "heading",
+    "stagger",
+    "spring"
+  ],
+  "framework": "react",
+  "motion": "stagger-reveal",
+  "intensity": 4,
+  "best_for": [
+    "hero",
+    "title",
+    "landing-page"
+  ],
+  "description": "Editorial kinetic typography with physics-based spring staggered entrance and character rotation.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const KineticHeading: React.FC<{ text?: string }> = ({ text = \"Autonomous Sovereign Systems\" }) => {\n  return (\n    <h1 className=\"text-5xl md:text-7xl font-extrabold tracking-tight text-white flex flex-wrap gap-x-3\">\n      {text.split(\" \").map((word, i) => (\n        <span\n          key={i}\n          className=\"inline-block transition-transform duration-500 hover:-translate-y-1 hover:text-cyan-400\"\n          style={{ animation: `fade-slide-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.12}s backwards` }}\n        >\n          {word}\n        </span>\n      ))}\n    </h1>\n  );\n};\n",
+    "css": ".kinetic-heading {\n  font-family: var(--font-heading, 'Inter', sans-serif);\n  font-size: clamp(2.5rem, 5vw, 4.5rem);\n  font-weight: 800;\n  letter-spacing: -0.03em;\n  line-height: 1.1;\n  color: var(--text-color, #ffffff);\n}\n.kinetic-word {\n  display: inline-block;\n  opacity: 0;\n  transform: translateY(24px) rotate(2deg);\n  animation: kinetic-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;\n}\n@keyframes kinetic-in {\n  to {\n    opacity: 1;\n    transform: translateY(0) rotate(0deg);\n  }\n}\n",
+    "html": "<h1 class=\"kinetic-heading\">\n  <span class=\"kinetic-word\" style=\"animation-delay: 0.1s\">Sovereign</span>\n  <span class=\"kinetic-word\" style=\"animation-delay: 0.2s\">AI</span>\n  <span class=\"kinetic-word\" style=\"animation-delay: 0.3s\">Operating</span>\n  <span class=\"kinetic-word\" style=\"animation-delay: 0.4s\">Layer</span>\n</h1>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

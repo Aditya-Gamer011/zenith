@@ -55,7 +55,9 @@ Zenith includes over 60 built-in tools organized across 12 functional domains. T
 | `generate_xlsx` | `filename`, `data` (CSV/pipe formatted), `sheet_name` | Create a Microsoft Excel spreadsheet with structured columns and headers. |
 | `generate_pptx` | `title`, `slides` (array), `theme`, `transition`, `author` | Generate a comprehensive PowerPoint (`.pptx`) deck (typically 6–8 slides) with themes (`executive_dark`, `cyberpunk_neon`, `corporate_light`, `emerald_forest`, `sunset_warm`, `midnight_violet`), layout primitives (`photo_hero`, `stat_hero`, `timeline`, `cards_grid`), and embedded web photos. |
 | `generate_chart` | `title`, `chart_type` ("bar" \| "line" \| "pie" \| "doughnut"), `labels`, `values` | Render high-resolution visual charts as PNG images for inclusion in chat or exports. |
-| `analyze_file` | `file_path` (string) | Extract text, tables, or source code from user-uploaded documents (PDF, DOCX, CSV, TXT, PY, JS). |
+| `read_presentation` | `file_path` (string), `max_slides` (int, default 50) | Read, parse, and analyze PowerPoint presentations (`.pptx`), extracting slide titles, bullet points, structured tables, and speaker notes. |
+| `read_spreadsheet` | `file_path` (string), `sheet_name` (string, optional), `max_rows` (int, default 100), `max_cols` (int, default 20) | Read, parse, and format Excel workbooks (`.xlsx`, `.xlsm`) or CSV/TSV spreadsheets as clean Markdown tables with row/column counts. |
+| `analyze_file` | `file_path` (string) | Extract text, tables, or source code from user-uploaded documents (PPTX, XLSX, CSV, PDF, DOCX, JSON, TXT, code files). |
 | `modify_file` | `file_path` (string), `new_content` (string) | Update and re-export modified document content. |
 | `analyze_image` | `image_path` (string) | Run multimodal vision inspection, OCR, and diagram analysis on user-uploaded images or screenshots. |
 | `edit_image` | `image_path` (string), `action` ("resize" \| "crop" \| "rotate" \| "convert" \| "watermark" \| "blur") | Manipulate images and export transformed assets. |

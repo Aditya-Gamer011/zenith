@@ -1,0 +1,26 @@
+{
+  "id": "process-flow",
+  "name": "Horizontal Stage Flow Diagram",
+  "type": "component",
+  "tags": [
+    "flow",
+    "process",
+    "pipeline",
+    "horizontal"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "process",
+    "architecture",
+    "timeline"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Horizontal interconnected stage nodes linked by arrow paths showing clear procedural progression.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

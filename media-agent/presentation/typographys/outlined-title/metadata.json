@@ -1,0 +1,26 @@
+{
+  "id": "outlined-title",
+  "name": "Outlined Wireframe Title",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "outlined",
+    "stroke",
+    "futuristic",
+    "wireframe"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "closing",
+    "statement"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "Transparent fill headline with luminous outer hairline stroke defining architectural letterforms.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

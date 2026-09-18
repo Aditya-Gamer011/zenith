@@ -81,11 +81,13 @@ def test_markup_parser():
 
 def test_guarded_containers():
     from zenith.tools import homelab
+    from unittest.mock import patch
 
-    assert "jellyfin" in homelab.GUARDED
-    assert "bogus" not in homelab.GUARDED
-    assert homelab._guarded("bogus") is not None
-    assert homelab._guarded("jellyfin") is None
+    with patch.object(homelab, "GUARDED", {"jellyfin", "zenith-core"}):
+        assert "jellyfin" in homelab.GUARDED
+        assert "bogus" not in homelab.GUARDED
+        assert homelab._guarded("bogus") is not None
+        assert homelab._guarded("jellyfin") is None
 
 
 def test_tool_parameter_signature_fixes():

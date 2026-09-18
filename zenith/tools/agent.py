@@ -107,6 +107,72 @@ async def delegate_parallel(
     )
 
 
+async def delegate_pipeline(
+    steps: list[dict[str, Any]] | str,
+    initial_context: str = "",
+    emit: Any = None,
+) -> str:
+    """Execute a multi-stage sequential pipeline of specialized agent tasks.
+
+    Each step runs strictly in order; outputs and deliverables of previous steps
+    are automatically piped as context into subsequent steps. Use when steps
+    depend on deliverables of prior steps (e.g. create presentation -> email links).
+    """
+    svc = _get_service()
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except Exception:
+            return "Error: 'steps' parameter must be a list of step objects (e.g. [{'department': 'creative', 'task': '...'}, {'department': 'communication', 'task': '...'}])."
+    if not isinstance(steps, list) or not steps:
+        return "Error: 'steps' must be a non-empty list of sequential step assignments."
+
+    accumulated_context = (initial_context or "").strip()
+    step_reports: list[str] = []
+
+    for idx, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            return f"Error: step {idx} is invalid (expected object with 'department' and 'task')."
+        dept = (step.get("department") or "").strip().lower()
+        task = (step.get("task") or "").strip()
+        if not dept or not task:
+            return f"Error: step {idx} must specify both 'department' and 'task'."
+
+        step_context = step.get("context", "") or ""
+        if accumulated_context:
+            combined_context = f"{step_context}\n\n[Previous Pipeline Steps Context & Deliverables]:\n{accumulated_context}".strip()
+        else:
+            combined_context = step_context
+
+        res = await svc.execute_task(dept, task, context=combined_context, emit=emit)
+        agent_name = res.get("agent", dept)
+        calls = res.get("tool_calls", 0)
+        output = (res.get("result") or res.get("error") or "No output").strip()
+        ok = res.get("ok", False)
+        status_tag = "✅ Completed" if ok else "❌ Failed"
+
+        report = (
+            f"### Step {idx}: [{agent_name}] — {status_tag} ({calls} tool steps)\n"
+            f"- **Mission Goal**: *{task}*\n\n"
+            f"{output}"
+        )
+        step_reports.append(report)
+
+        if not ok:
+            step_reports.append(
+                f"\n⚠️ **Pipeline halted early at Step {idx}** due to execution failure in `{dept}`."
+            )
+            break
+
+        # Accumulate deliverables for subsequent steps
+        accumulated_context += f"\n--- Deliverables from Step {idx} ({agent_name}) ---\n{output}\n"
+
+    return (
+        f"## ⛓️ Sequential Pipeline Execution Summary ({len(step_reports)} steps processed):\n\n"
+        + "\n\n---\n\n".join(step_reports)
+    )
+
+
 async def ask_specialist(
     department: str,
     question: str,
@@ -162,15 +228,46 @@ async def query_findings(
     department: str = "",
     limit: int = 5,
 ) -> str:
-    """Query recent findings from the shared organizational blackboard."""
+    """Query recent findings from the shared organizational blackboard and stored artifacts."""
     from ..memory import store
     findings = store.blackboard_query(query=query, department=department, limit=limit)
-    if not findings:
-        return f"No findings found on the blackboard matching '{query}'."
-    lines = [f"### Organizational Blackboard ({len(findings)} findings):"]
-    for f in findings:
-        lines.append(f"- **#{f['id']} [{f.get('department', 'Agent')}] {f.get('topic', '')}** ({f.get('created_at', '')}):\n  {f.get('content', '')}")
-    return "\n\n".join(lines)
+
+    all_artifacts = store.list_artifacts(limit=30)
+    matching_artifacts = []
+    q = (query or "").strip().lower()
+    for art in all_artifacts:
+        title = (art.get("title") or "").lower()
+        atype = (art.get("type") or "").lower()
+        aid = (art.get("id") or "").lower()
+        if not q or (q in title or q in atype or q in aid):
+            matching_artifacts.append(art)
+
+    if not findings and not matching_artifacts:
+        return f"No findings or artifacts found matching '{query}'."
+
+    sections = []
+    if findings:
+        lines = [f"### 📋 Organizational Blackboard ({len(findings)} findings):"]
+        for f in findings:
+            lines.append(f"- **#{f['id']} [{f.get('department', 'Agent')}] {f.get('topic', '')}** ({f.get('created_at', '')}):\n  {f.get('content', '')}")
+        sections.append("\n\n".join(lines))
+
+    if matching_artifacts:
+        art_lines = [f"### 🎨 Discovered Artifacts & Deliverables ({len(matching_artifacts)} artifacts):"]
+        for a in matching_artifacts[:limit]:
+            web_url = a.get("web_url") or ""
+            file_path = a.get("file_path") or ""
+            title = a.get("title") or "Untitled Artifact"
+            art_type = a.get("type", "file").upper()
+            art_lines.append(
+                f"- **{title}** [{art_type}] (ID: `{a.get('id')}`)\n"
+                f"  - Local Web Viewer: {web_url or 'N/A'} *(local browser UI only)*\n"
+                f"  - File Path: `{file_path}`\n"
+                f"  - Email Attachment: Use `email_send(..., attachment_path='{file_path}')` *(ALWAYS attach file directly in emails)*"
+            )
+        sections.append("\n\n".join(art_lines))
+
+    return "\n\n---\n\n".join(sections)
 
 
 

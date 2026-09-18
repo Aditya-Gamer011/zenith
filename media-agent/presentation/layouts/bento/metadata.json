@@ -1,0 +1,37 @@
+{
+  "id": "bento",
+  "name": "Modern Bento Grid Layout",
+  "type": "layout",
+  "tags": [
+    "bento",
+    "grid",
+    "cards",
+    "modular",
+    "high-density",
+    "features"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "features",
+    "capabilities",
+    "product-tiers",
+    "overview"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Asymmetric 4-box bento grid showcasing distinct capabilities with subtle hairline borders, badges, and glowing highlights.",
+  "components": [
+    "glass-card",
+    "feature-badge",
+    "mini-stat",
+    "icon-node"
+  ],
+  "motion": [
+    "stagger-reveal",
+    "scale"
+  ],
+  "default_props": {}
+}

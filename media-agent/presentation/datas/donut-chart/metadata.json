@@ -1,0 +1,28 @@
+{
+  "id": "donut-chart",
+  "name": "Native Doughnut Share Chart",
+  "type": "data",
+  "tags": [
+    "chart",
+    "donut",
+    "doughnut",
+    "share",
+    "allocation",
+    "data"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "data-story",
+    "market-share",
+    "allocation"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Segmented doughnut ring illustrating market share or resource distribution breakdown.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

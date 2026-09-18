@@ -1,0 +1,27 @@
+{
+  "id": "highlighted-word",
+  "name": "Emphasis Word Capsule Tag",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "highlight",
+    "tag",
+    "emphasis",
+    "contrast"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "statement",
+    "editorial",
+    "bento"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "playful-youthful",
+    "minimal-premium"
+  ],
+  "description": "Accent color capsule background surrounding a singular focal keyword within headline.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

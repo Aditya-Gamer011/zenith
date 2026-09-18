@@ -1,0 +1,37 @@
+{
+  "id": "image-bleed",
+  "name": "Full Bleed Visual Layout",
+  "type": "layout",
+  "tags": [
+    "image-bleed",
+    "bleed",
+    "dramatic",
+    "visual",
+    "art-directed",
+    "cinematic"
+  ],
+  "visualIntensity": 5,
+  "bestFor": [
+    "product-reveal",
+    "visual-thesis",
+    "keynote",
+    "brand"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative",
+    "premium-editorial"
+  ],
+  "description": "Dramatic visual showcase with contrast backdrop scrim, overlaid typography, and key punchlines.",
+  "components": [
+    "bleed-container",
+    "scrim-overlay",
+    "hero-title",
+    "feature-card"
+  ],
+  "motion": [
+    "zoom",
+    "fade"
+  ],
+  "default_props": {}
+}

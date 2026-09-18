@@ -1,0 +1,37 @@
+{
+  "id": "liquid-button",
+  "name": "Liquid Morphing Button",
+  "category": "button",
+  "source": "uiverse",
+  "tags": [
+    "liquid",
+    "organic",
+    "morph",
+    "fluid",
+    "interactive"
+  ],
+  "framework": "html",
+  "motion": "liquid-expand",
+  "intensity": 4,
+  "best_for": [
+    "playful",
+    "creative",
+    "CTA"
+  ],
+  "description": "Organic fluid button with liquid droplets expanding on hover through SVG gooey filters.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const LiquidButton: React.FC<{ children?: React.ReactNode }> = ({ children = \"Liquid Discover\" }) => (\n  <button className=\"liquid-btn\">\n    <span className=\"relative z-10\">{children}</span>\n    <div className=\"liquid-blob\" />\n  </button>\n);\n",
+    "css": ".liquid-btn {\n  position: relative;\n  padding: 16px 36px;\n  background: var(--card-bg, #181b20);\n  border: 1px solid var(--border-color, #2a2e37);\n  border-radius: 9999px;\n  color: var(--text-color, #ffffff);\n  font-family: var(--font-heading, sans-serif);\n  font-weight: 600;\n  cursor: pointer;\n  overflow: hidden;\n  transition: color 0.3s ease;\n}\n.liquid-btn .liquid-blob {\n  position: absolute;\n  top: 100%;\n  left: 50%;\n  width: 200%;\n  height: 200%;\n  background: var(--accent-1, #3b82f6);\n  border-radius: 40%;\n  transform: translate(-50%, 0);\n  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);\n  z-index: 0;\n}\n.liquid-btn:hover .liquid-blob {\n  transform: translate(-50%, -85%) rotate(180deg);\n}\n.liquid-btn span {\n  position: relative;\n  z-index: 1;\n}\n",
+    "html": "<button class=\"liquid-btn\"><span>Interactive Liquid &rarr;</span><div class=\"liquid-blob\"></div></button>"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

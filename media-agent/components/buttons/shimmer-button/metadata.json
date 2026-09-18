@@ -1,0 +1,38 @@
+{
+  "id": "shimmer-button",
+  "name": "Shimmer Conic Button",
+  "category": "button",
+  "source": "magicui",
+  "tags": [
+    "shimmer",
+    "magicui",
+    "conic",
+    "premium",
+    "minimal"
+  ],
+  "framework": "react",
+  "motion": "continuous-shimmer",
+  "intensity": 3,
+  "best_for": [
+    "hero",
+    "CTA",
+    "editorial",
+    "luxury"
+  ],
+  "description": "Minimalist obsidian button encased in continuous rotating conic gradient border shimmer.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const ShimmerButton: React.FC<{ children?: React.ReactNode; onClick?: () => void }> = ({\n  children = \"Explore Collection\",\n  onClick,\n}) => {\n  return (\n    <button\n      onClick={onClick}\n      className=\"relative inline-flex h-12 overflow-hidden rounded-full p-[1px] focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-slate-50\"\n    >\n      <span className=\"absolute inset-[-1000%] animate-[spin_3s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,var(--accent-1,#38bdf8)_0%,var(--accent-2,#818cf8)_50%,var(--accent-1,#38bdf8)_100%)]\" />\n      <span className=\"inline-flex h-full w-full cursor-pointer items-center justify-center rounded-full bg-slate-950 px-7 py-1 text-sm font-medium text-white backdrop-blur-3xl hover:bg-slate-900 transition-colors\">\n        {children}\n      </span>\n    </button>\n  );\n};\n",
+    "css": ".shimmer-button-wrap {\n  position: relative;\n  display: inline-flex;\n  border-radius: 9999px;\n  padding: 1.5px;\n  overflow: hidden;\n  background: transparent;\n  cursor: pointer;\n}\n.shimmer-button-conic {\n  position: absolute;\n  inset: -150%;\n  background: conic-gradient(from 0deg at 50% 50%, var(--accent-1, #d4a373) 0deg, var(--accent-2, #3b82f6) 180deg, var(--accent-1, #d4a373) 360deg);\n  animation: shimmer-spin 4s linear infinite;\n}\n@keyframes shimmer-spin {\n  to { transform: rotate(360deg); }\n}\n.shimmer-button-inner {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 12px 28px;\n  border-radius: 9999px;\n  background: var(--bg-color, #0d0f12);\n  color: var(--text-color, #f4f4f6);\n  font-family: var(--font-heading, sans-serif);\n  font-size: 0.88rem;\n  font-weight: 600;\n  transition: background 0.2s ease;\n}\n.shimmer-button-wrap:hover .shimmer-button-inner {\n  background: var(--card-bg, #181b20);\n}\n",
+    "html": "<div class=\"shimmer-button-wrap\">\n  <div class=\"shimmer-button-conic\"></div>\n  <div class=\"shimmer-button-inner\"><span>Start Free Experience &rarr;</span></div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

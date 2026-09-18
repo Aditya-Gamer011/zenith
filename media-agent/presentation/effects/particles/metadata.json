@@ -1,0 +1,25 @@
+{
+  "id": "particles",
+  "name": "Floating Stardust Particle Field",
+  "type": "effect",
+  "tags": [
+    "particles",
+    "constellation",
+    "depth",
+    "stars"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "hero",
+    "cinematic-hero",
+    "background"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Subtle floating stardust particle nodes establishing multi-layer visual depth.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

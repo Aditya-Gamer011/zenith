@@ -1,0 +1,25 @@
+{
+  "id": "abstract-geometry",
+  "name": "Sculptural Abstract Solid",
+  "type": "3d",
+  "tags": [
+    "3d",
+    "abstract",
+    "sculpture",
+    "geometry",
+    "art"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "image-bleed"
+  ],
+  "compatibleStyles": [
+    "experimental-creative",
+    "premium-editorial"
+  ],
+  "description": "Procedural parametric sculptural geometry acting as an art-directed visual anchor.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

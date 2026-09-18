@@ -51,12 +51,12 @@ WRITE_PROTECTED_FILES = [
 
 # Destructive / Catastrophic Commands
 DANGEROUS_COMMAND_PATTERNS = [
-    re.compile(r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(/\*?|~|\$HOME)\b"),
+    re.compile(r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(?:/(?:\s|$|\*|;)|~(?:\s|$|\*|;)|\$HOME(?:\s|$|/\*|;))"),
     re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"),  # Fork bomb
     re.compile(r"\bmkfs(\.[a-z0-9]+)?\b"),
     re.compile(r"\bdd\s+if=.*of=(/dev/sd[a-z]|/dev/nvme[0-9]|/dev/vd[a-z])\b"),
     re.compile(r">\s*/dev/sd[a-z]\b"),
-    re.compile(r"\bchmod\s+-[a-zA-Z]*R[a-zA-Z]*\s+777\s+/\b"),
+    re.compile(r"\bchmod\s+-[a-zA-Z]*R[a-zA-Z]*\s+777\s+(?:/(?:\s|$|\*|;)|~(?:\s|$|\*|;))"),
     re.compile(r"\bformat\s+[a-zA-Z]:", re.IGNORECASE),
     re.compile(r"\bshutdown\b"),
     re.compile(r"\breboot\b"),

@@ -542,14 +542,14 @@ def _normalize_email_args(to: str, subject: str, body: str) -> tuple[str, str, s
 
 
 async def email_send(to: str, subject: str, body: str) -> str:
-    """Send email via Resend/SMTP."""
+    """Send email via Resend from Zenith's assigned address."""
     from . import mail
     to, subject, body = _normalize_email_args(to, subject, body)
     if not (to and subject and body):
         return "Provide to, subject and body."
     if not (settings.resend_api_key or settings.mail_smtp_host):
-        return ("Email isn't configured for sending (set RESEND_API_KEY for "
-                "zenith@agm.quest, or MAIL_SMTP_*). Draft it and send manually.")
+        return (f"Email isn't configured for sending (set RESEND_API_KEY in .env for "
+                f"sending from {settings.resend_from}). Draft it and send manually.")
     return await mail.send(to, subject, body)
 
 

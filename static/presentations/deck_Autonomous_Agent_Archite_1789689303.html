@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Autonomous Agent Architecture — Zenith Studio Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <!-- Three.js for 3D Ambient WebGL Background -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #14110F;
+      --card-bg: #241D19;
+      --card-glass: rgba(36, 29, 25, 0.82);
+      --border-color: #42352D;
+      --text-color: #FDFBF7;
+      --muted-color: #C2B29F;
+      --accent-1: #DDA15E;
+      --accent-2: #606C38;
+      --glow-color: rgba(221, 161, 94, 0.2);
+      --font-heading: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+      --font-body: 'Outfit', 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: var(--font-body);
+      user-select: none;
+    }
+
+    /* WebGL Canvas Background */
+    #webgl-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0.85;
+    }
+
+    /* Presentation Viewport */
+    #deck-viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      perspective: 1200px;
+    }
+
+    /* Top Progress Bar */
+    #progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 0 10px var(--glow-color);
+      transition: width 0.4s var(--ease-out-expo);
+      z-index: 100;
+    }
+
+    /* Slide Stage Container */
+    #stage {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 4rem;
+    }
+
+    @media (max-width: 768px) {
+      #stage {
+        padding: 1.5rem;
+      }
+    }
+
+    /* Slide Elements */
+    .slide {
+      position: absolute;
+      width: 100%;
+      max-width: 1280px;
+      height: 85vh;
+      max-height: 760px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(30px) scale(0.98);
+      transition: opacity 0.5s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    .slide.prev {
+      opacity: 0;
+      transform: translateY(-30px) scale(0.98);
+    }
+
+    /* Slide Header */
+    .slide-header {
+      margin-bottom: 2rem;
+    }
+
+    .slide-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--accent-1);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.85rem;
+    }
+
+    .slide-title {
+      font-family: var(--font-heading);
+      font-size: clamp(2rem, 3.8vw, 3.2rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--text-color);
+      letter-spacing: -0.02em;
+    }
+
+    .slide-subtitle {
+      margin-top: 0.65rem;
+      font-size: clamp(1rem, 1.4vw, 1.25rem);
+      color: var(--muted-color);
+      font-weight: 400;
+      max-width: 800px;
+      line-height: 1.5;
+    }
+
+    /* 3D Glass Cards */
+    .tilt-card {
+      background: var(--card-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.75rem;
+      transition: transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    .tilt-card:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 0 20px var(--glow-color);
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 900px) {
+      .grid-2, .grid-3, .grid-4 {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        overflow-y: auto;
+        max-height: 60vh;
+      }
+    }
+
+    /* Hero Title Slide */
+    .hero-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 1.25rem;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--accent-1);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-title {
+      font-family: var(--font-heading);
+      font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.08;
+      margin-bottom: 1.25rem;
+      color: var(--text-color);
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+      color: var(--muted-color);
+      line-height: 1.6;
+      max-width: 720px;
+    }
+
+    .hero-footer {
+      margin-top: 2.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--muted-color);
+    }
+
+    /* Stat Hero Counters */
+    .stat-card {
+      display: flex;
+      flex-direction: column;
+      padding: 2rem 1.5rem;
+    }
+
+    .stat-number {
+      font-family: var(--font-heading);
+      font-size: clamp(2.5rem, 4vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--accent-1);
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-color);
+      margin-bottom: 0.35rem;
+    }
+
+    .stat-sub {
+      font-size: 0.85rem;
+      color: var(--muted-color);
+      line-height: 1.4;
+    }
+
+    /* Split Hero (50 / 50) */
+    .split-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 2.5rem;
+      align-items: center;
+    }
+
+    .split-image-container {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      height: 380px;
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .split-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Bullet List with Crisp Typography */
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .bullet-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      font-size: 1rem;
+      color: var(--text-color);
+      line-height: 1.5;
+    }
+
+    .bullet-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-1);
+      margin-top: 0.55rem;
+      flex-shrink: 0;
+    }
+
+    /* Timeline / Process Steps */
+    .timeline-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-1);
+      color: #000;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Comparison Table */
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .comp-col-header {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      font-weight: 700;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid var(--accent-1);
+      margin-bottom: 1rem;
+      color: var(--text-color);
+    }
+
+    /* Quote Callout */
+    .quote-box {
+      position: relative;
+      padding: 3rem 2.5rem;
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .quote-mark {
+      font-family: var(--font-heading);
+      font-size: 5rem;
+      line-height: 0.5;
+      color: var(--accent-1);
+      opacity: 0.4;
+      margin-bottom: 1rem;
+    }
+
+    .quote-text {
+      font-family: var(--font-heading);
+      font-size: clamp(1.4rem, 2.2vw, 2rem);
+      font-style: italic;
+      line-height: 1.45;
+      margin-bottom: 1.5rem;
+      color: var(--text-color);
+    }
+
+    .quote-author {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--accent-1);
+      letter-spacing: 0.05em;
+    }
+
+    /* Bottom Control Bar */
+    #controls-bar {
+      position: absolute;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.5rem 1.25rem;
+      background: rgba(15, 17, 21, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 9999px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn-ctrl {
+      background: transparent;
+      border: none;
+      color: var(--text-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .btn-ctrl:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--accent-1);
+    }
+
+    .btn-action {
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .btn-action-primary {
+      background: var(--accent-1);
+      color: #000;
+      border: none;
+      font-weight: 600;
+    }
+
+    .btn-action-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .btn-action-outline {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+    }
+
+    .btn-action-outline:hover {
+      border-color: rgba(255, 255, 255, 0.3);
+      color: var(--accent-1);
+    }
+
+    #slide-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted-color);
+      padding: 0 0.5rem;
+    }
+
+    /* Modals: Speaker Notes & Grid Overview */
+    .deck-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(16px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .deck-modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 700px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 2rem;
+      position: relative;
+    }
+
+    .modal-title {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--accent-1);
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 1.25rem;
+      right: 1.25rem;
+      background: transparent;
+      border: none;
+      color: var(--muted-color);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    /* Slide Grid Overview */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      max-height: 70vh;
+      overflow-y: auto;
+      padding: 1rem 0;
+    }
+
+    .overview-item {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .overview-item:hover, .overview-item.active {
+      border-color: var(--accent-1);
+      background: rgba(255, 255, 255, 0.08);
+      transform: translateY(-2px);
+    }
+
+    .overview-num {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent-1);
+      margin-bottom: 0.4rem;
+    }
+
+    .overview-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- WebGL 3D Canvas Background -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <div id="deck-viewport">
+    <div id="progress-bar"></div>
+
+    <!-- Main Slide Stage -->
+    <div id="stage"></div>
+
+    <!-- Bottom Controls -->
+    <div id="controls-bar">
+      <button class="btn-ctrl" id="btn-prev" title="Previous Slide (← / Space)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div id="slide-indicator">1 / 1</div>
+      <button class="btn-ctrl" id="btn-next" title="Next Slide (→ / Space)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 0.25rem;"></div>
+
+      <button class="btn-ctrl" id="btn-grid" title="Slide Overview (G)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+
+      <button class="btn-ctrl" id="btn-notes" title="Speaker Notes (N)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </button>
+
+      <button class="btn-ctrl" id="btn-fullscreen" title="Fullscreen (F)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      </button>
+
+      <a href="/api/files/download?filename=presentation_Autonomous_Agent_Architecture_1789689303.pptx" class="btn-action btn-action-primary" title="Download editable PPTX" download>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>PPTX</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Speaker Notes Modal (N) -->
+  <div class="deck-modal" id="modal-notes">
+    <div class="modal-card">
+      <button class="modal-close" id="close-notes">&times;</button>
+      <div class="modal-title">🎙️ Speaker Notes</div>
+      <div id="notes-content" style="color: var(--text-color); line-height: 1.6; font-size: 1.05rem;"></div>
+    </div>
+  </div>
+
+  <!-- Slide Grid Overview Modal (G) -->
+  <div class="deck-modal" id="modal-grid">
+    <div class="modal-card" style="max-width: 900px;">
+      <button class="modal-close" id="close-grid">&times;</button>
+      <div class="modal-title">Slide Overview</div>
+      <div class="overview-grid" id="overview-items"></div>
+    </div>
+  </div>
+
+  <script>
+    const SLIDES = [{"title": "Updated Agent Vision 2026", "layout": "hero_title", "subtitle": "Next Generation", "tag": "Introduction", "bullets": [], "notes": "Key takeaway for Autonomous Agent Architecture: Deliver with concise, confident executive presence."}, {"title": "Strategic Context & Opportunity", "layout": "split_hero", "subtitle": "Market dynamics and foundational objectives", "bullets": ["Addressing critical industry shifts", "Capitalizing on high-growth segments", "Eliminating systemic friction"], "tag": "Context", "notes": "Key takeaway for Strategic Context & Opportunity: Deliver with concise, confident executive presence."}, {"title": "Core Architecture & Capabilities", "layout": "cards_grid", "subtitle": "Platform strengths and competitive advantages", "cards": [{"title": "Precision Execution", "points": ["High-performance pipeline", "Sub-second response SLAs"]}, {"title": "Scalable Integration", "points": ["Zero-friction onboarding", "Enterprise security compliant"]}, {"title": "Continuous Optimization", "points": ["Real-time telemetry", "Automated feedback loops"]}], "tag": "Capabilities", "bullets": [], "notes": "Key takeaway for Core Architecture & Capabilities: Deliver with concise, confident executive presence."}, {"title": "Performance & Impact Metrics", "layout": "stat_hero", "subtitle": "Quantifiable outcomes and baseline projections", "stats": [{"number": "99.99%", "label": "Reliability SLA", "sub": "Mission-critical uptime"}, {"number": "3.5x", "label": "Throughput Velocity", "sub": "Accelerated cycle times"}, {"number": "-45%", "label": "Operational Overhead", "sub": "Cost reduction"}, {"number": "100%", "label": "Data Integrity", "sub": "ACID compliance"}], "tag": "Metrics", "bullets": [], "notes": "Key takeaway for Performance & Impact Metrics: Deliver with concise, confident executive presence."}, {"title": "Modern vs Legacy Paradigm", "layout": "comparison", "subtitle": "Structural evolution across key operational vectors", "columns": ["Legacy Infrastructure", "Zenith Modern Engine"], "rows": [["Siloed, manual processes", "Autonomous, integrated agent workflow"], ["Static, rigid report templates", "Kinetic, interactive 3D presentations"], ["Fragmented data silos", "Unified graph memory architecture"]], "tag": "Comparison", "bullets": [], "notes": "Key takeaway for Modern vs Legacy Paradigm: Deliver with concise, confident executive presence."}, {"title": "Execution Roadmap & Next Horizons", "layout": "timeline", "subtitle": "Milestone progression toward full deployment", "steps": [{"title": "Phase 1: Foundation", "desc": "Core engine rollout and baseline validation"}, {"title": "Phase 2: Scale", "desc": "Ecosystem integration and multi-team onboarding"}, {"title": "Phase 3: Autonomy", "desc": "Autonomous optimization and real-time synthesis"}], "tag": "Roadmap", "bullets": [], "notes": "Key takeaway for Execution Roadmap & Next Horizons: Deliver with concise, confident executive presence."}];
+    const THEME = {"name": "Boba Bash Brand", "description": "Playful, tactile beverage brand with creamy milk tea, roasted brown sugar pearls, matcha green, and warm cream.", "font_heading": "'Plus Jakarta Sans', 'Outfit', sans-serif", "font_body": "'Outfit', 'Inter', sans-serif", "font_mono": "'JetBrains Mono', monospace", "colors": {"bg": "#14110F", "bg_rgb": [20, 17, 15], "card": "#241D19", "card_rgb": [36, 29, 25], "card_glass": "rgba(36, 29, 25, 0.82)", "border": "#42352D", "border_rgb": [66, 53, 45], "text": "#FDFBF7", "text_rgb": [253, 251, 247], "muted": "#C2B29F", "muted_rgb": [194, 178, 159], "accent1": "#DDA15E", "accent1_rgb": [221, 161, 94], "accent2": "#606C38", "accent2_rgb": [96, 108, 56], "glow": "rgba(221, 161, 94, 0.2)"}, "canvas_effect": "floating_pearls"};
+    let currentSlide = 0;
+
+    // ── 1. WebGL 3D Ambient Canvas Background ────────────────────────────────
+    function initWebGLBackground() {
+      const canvas = document.getElementById("webgl-canvas");
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.z = 40;
+
+      // Create Particle Field matching theme accent
+      const particleCount = 180;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const scales = new Float32Array(particleCount);
+
+      for (let i = 0; i < particleCount * 3; i += 3) {
+        positions[i] = (Math.random() - 0.5) * 80;
+        positions[i + 1] = (Math.random() - 0.5) * 60;
+        positions[i + 2] = (Math.random() - 0.5) * 40;
+        scales[i / 3] = Math.random() * 1.5 + 0.5;
+      }
+
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+      // Parse theme accent color
+      const hexColor = THEME.colors.accent1 || "#D4A373";
+      const pMaterial = new THREE.PointsMaterial({
+        color: new THREE.Color(hexColor),
+        size: 0.6,
+        transparent: true,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending
+      });
+
+      const particles = new THREE.Points(geometry, pMaterial);
+      scene.add(particles);
+
+      // Subtle mouse interaction
+      let mouseX = 0, mouseY = 0;
+      window.addEventListener("mousemove", (e) => {
+        mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+        mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        particles.rotation.y += 0.0008;
+        particles.rotation.x += 0.0004;
+
+        camera.position.x += (mouseX * 4 - camera.position.x) * 0.03;
+        camera.position.y += (-mouseY * 4 - camera.position.y) * 0.03;
+        camera.lookAt(scene.position);
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    // ── 2. Render Slide Primitives ───────────────────────────────────────────
+    function renderSlides() {
+      const stage = document.getElementById("stage");
+      stage.innerHTML = "";
+
+      SLIDES.forEach((slide, idx) => {
+        const el = document.createElement("div");
+        el.className = `slide ${idx === 0 ? "active" : ""}`;
+        el.id = `slide-${idx}`;
+
+        const layout = slide.layout || "cards_grid";
+        const title = slide.title || `Slide ${idx + 1}`;
+        const subtitle = slide.subtitle || "";
+        const tag = slide.tag || slide.category || `0${idx + 1}`;
+
+        let contentHTML = "";
+
+        if (layout === "hero_title") {
+          contentHTML = `
+            <div class="hero-container">
+              <div class="hero-badge">${tag}</div>
+              <h1 class="hero-title">${title}</h1>
+              ${subtitle ? `<p class="hero-subtitle">${subtitle}</p>` : ""}
+              <div class="hero-footer">
+                <span>Zenith Studio</span>
+                <span>•</span>
+                <span>${new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
+              </div>
+            </div>
+          `;
+        } else if (layout === "stat_hero") {
+          const stats = slide.stats || [];
+          const gridClass = stats.length === 2 ? "grid-2" : stats.length === 3 ? "grid-3" : "grid-4";
+          contentHTML = `
+            <div class="slide-header">
+              <div class="slide-tag">${tag}</div>
+              <h2 class="slide-title">${title}</h2>
+              ${subtitle ? `<p class="slide-subtitle">${subtitle}</p>` : ""}
+            </div>
+            <div class="${gridClass}">
+              ${stats.map(s => `
+                <div class="tilt-card stat-card">
+                  <div class="stat-number">${s.number || s.value || "0"}</div>
+                  <div class="stat-label">${s.label || s.title || ""}</div>
+                  <div class="stat-sub">${s.sub || s.desc || ""}</div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } else if (layout === "split_hero") {
+          const bullets = slide.bullets || [];
+          contentHTML = `
+            <div class="split-layout">
+              <div>
+                <div class="slide-tag">${tag}</div>
+                <h2 class="slide-title">${title}</h2>
+                ${subtitle ? `<p class="slide-subtitle">${subtitle}</p>` : ""}
+                <ul class="bullet-list">
+                  ${bullets.map(b => `
+                    <li class="bullet-item">
+                      <div class="bullet-dot"></div>
+                      <div>${b}</div>
+                    </li>
+                  `).join("")}
+                </ul>
+              </div>
+              <div class="tilt-card split-image-container">
+                ${slide.image_url ? `<img src="${slide.image_url}" class="split-image" alt="${title}" />` : `
+                  <div style="text-align: center; padding: 2rem; color: var(--muted-color);">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 1rem; color: var(--accent-1);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    <div style="font-weight: 600; color: var(--text-color);">${slide.image_query || "Key Visual"}</div>
+                  </div>
+                `}
+              </div>
+            </div>
+          `;
+        } else if (layout === "comparison") {
+          const cols = slide.columns || ["Legacy Approach", "Zenith Solution"];
+          const rows = slide.rows || [];
+          contentHTML = `
+            <div class="slide-header">
+              <div class="slide-tag">${tag}</div>
+              <h2 class="slide-title">${title}</h2>
+              ${subtitle ? `<p class="slide-subtitle">${subtitle}</p>` : ""}
+            </div>
+            <div class="comparison-grid">
+              ${cols.map((col, cIdx) => `
+                <div class="tilt-card">
+                  <div class="comp-col-header" style="${cIdx === 1 ? "border-color: var(--accent-2);" : ""}">${col}</div>
+                  <ul class="bullet-list">
+                    ${rows.map(r => `
+                      <li class="bullet-item">
+                        <div class="bullet-dot" style="${cIdx === 1 ? "background: var(--accent-2);" : ""}"></div>
+                        <div>${Array.isArray(r) ? (r[cIdx] || "") : r}</div>
+                      </li>
+                    `).join("")}
+                  </ul>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } else if (layout === "quote_callout") {
+          contentHTML = `
+            <div class="quote-box">
+              <div class="quote-mark">“</div>
+              <p class="quote-text">${slide.quote || title}</p>
+              <div class="quote-author">— ${slide.author || subtitle || "Industry Perspective"}</div>
+            </div>
+          `;
+        } else if (layout === "timeline" || layout === "process_steps") {
+          const steps = slide.steps || [];
+          contentHTML = `
+            <div class="slide-header">
+              <div class="slide-tag">${tag}</div>
+              <h2 class="slide-title">${title}</h2>
+              ${subtitle ? `<p class="slide-subtitle">${subtitle}</p>` : ""}
+            </div>
+            <div class="timeline-container">
+              ${steps.map((st, sIdx) => `
+                <div class="tilt-card">
+                  <div class="step-number">${sIdx + 1}</div>
+                  <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.5rem;">${st.title || `Phase ${sIdx+1}`}</div>
+                  <p style="color: var(--muted-color); font-size: 0.9rem; line-height: 1.5;">${st.desc || st.text || ""}</p>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } else {
+          // Default: cards_grid
+          const cards = slide.cards || [];
+          const gridClass = cards.length === 2 ? "grid-2" : cards.length === 4 ? "grid-4" : "grid-3";
+          contentHTML = `
+            <div class="slide-header">
+              <div class="slide-tag">${tag}</div>
+              <h2 class="slide-title">${title}</h2>
+              ${subtitle ? `<p class="slide-subtitle">${subtitle}</p>` : ""}
+            </div>
+            <div class="${gridClass}">
+              ${cards.map((c, cIdx) => `
+                <div class="tilt-card">
+                  <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent-1); margin-bottom: 0.5rem; text-transform: uppercase;">0${cIdx + 1}</div>
+                  <div style="font-family: var(--font-heading); font-size: 1.2rem; font-weight: 700; margin-bottom: 0.75rem;">${c.title || `Insight ${cIdx + 1}`}</div>
+                  <ul class="bullet-list">
+                    ${(c.points || c.bullets || []).map(p => `
+                      <li class="bullet-item">
+                        <div class="bullet-dot"></div>
+                        <div>${p}</div>
+                      </li>
+                    `).join("")}
+                  </ul>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        }
+
+        el.innerHTML = contentHTML;
+        stage.appendChild(el);
+      });
+
+      // Populate Overview Grid Modal
+      const overviewContainer = document.getElementById("overview-items");
+      overviewContainer.innerHTML = SLIDES.map((s, i) => `
+        <div class="overview-item ${i === 0 ? "active" : ""}" onclick="goToSlide(${i})">
+          <div class="overview-num">SLIDE ${i + 1}</div>
+          <div class="overview-title">${s.title || `Slide ${i + 1}`}</div>
+        </div>
+      `).join("");
+
+      // Apply 3D Interactive Mouse Tilt on Cards
+      init3DTilt();
+      updateNavigation();
+    }
+
+    // ── 3. Interactive 3D Card Tilt ──────────────────────────────────────────
+    function init3DTilt() {
+      const cards = document.querySelectorAll(".tilt-card");
+      cards.forEach(card => {
+        card.addEventListener("mousemove", (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left - rect.width / 2;
+          const y = e.clientY - rect.top - rect.height / 2;
+          const rotateX = (-y / (rect.height / 2)) * 6;
+          const rotateY = (x / (rect.width / 2)) * 6;
+          card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.01)`;
+        });
+        card.addEventListener("mouseleave", () => {
+          card.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1)";
+        });
+      });
+    }
+
+    // ── 4. Navigation & State Management ─────────────────────────────────────
+    function goToSlide(index) {
+      if (index < 0 || index >= SLIDES.length) return;
+
+      const currentEl = document.getElementById(`slide-${currentSlide}`);
+      const nextEl = document.getElementById(`slide-${index}`);
+
+      if (currentEl) {
+        currentEl.className = index > currentSlide ? "slide prev" : "slide";
+      }
+
+      currentSlide = index;
+
+      if (nextEl) {
+        nextEl.className = "slide active";
+      }
+
+      updateNavigation();
+      closeModals();
+    }
+
+    function nextSlide() {
+      if (currentSlide < SLIDES.length - 1) {
+        goToSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        goToSlide(currentSlide - 1);
+      }
+    }
+
+    function updateNavigation() {
+      // Update counter and progress bar
+      document.getElementById("slide-indicator").innerText = `${currentSlide + 1} / ${SLIDES.length}`;
+      const pct = ((currentSlide + 1) / SLIDES.length) * 100;
+      document.getElementById("progress-bar").style.width = `${pct}%`;
+
+      // Update speaker notes content
+      const slide = SLIDES[currentSlide];
+      const notes = slide ? (slide.notes || slide.speaker_notes || "No speaker notes for this slide.") : "";
+      document.getElementById("notes-content").innerText = notes;
+
+      // Update active item in overview grid
+      document.querySelectorAll(".overview-item").forEach((el, i) => {
+        el.className = `overview-item ${i === currentSlide ? "active" : ""}`;
+      });
+    }
+
+    function closeModals() {
+      document.getElementById("modal-notes").classList.remove("open");
+      document.getElementById("modal-grid").classList.remove("open");
+    }
+
+    // ── 5. Event Listeners (Keyboard & Controls) ─────────────────────────────
+    document.getElementById("btn-next").addEventListener("click", nextSlide);
+    document.getElementById("btn-prev").addEventListener("click", prevSlide);
+
+    document.getElementById("btn-notes").addEventListener("click", () => {
+      document.getElementById("modal-notes").classList.toggle("open");
+    });
+    document.getElementById("close-notes").addEventListener("click", () => {
+      document.getElementById("modal-notes").classList.remove("open");
+    });
+
+    document.getElementById("btn-grid").addEventListener("click", () => {
+      document.getElementById("modal-grid").classList.toggle("open");
+    });
+    document.getElementById("close-grid").addEventListener("click", () => {
+      document.getElementById("modal-grid").classList.remove("open");
+    });
+
+    document.getElementById("btn-fullscreen").addEventListener("click", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    // Keyboard controls
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        nextSlide();
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        prevSlide();
+      } else if (e.key === "Home") {
+        goToSlide(0);
+      } else if (e.key === "End") {
+        goToSlide(SLIDES.length - 1);
+      } else if (e.key === "f" || e.key === "F") {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      } else if (e.key === "n" || e.key === "N") {
+        document.getElementById("modal-notes").classList.toggle("open");
+      } else if (e.key === "g" || e.key === "G") {
+        document.getElementById("modal-grid").classList.toggle("open");
+      } else if (e.key === "Escape") {
+        closeModals();
+      }
+    });
+
+    // Swipe gestures on mobile
+    let touchStartX = 0;
+    window.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    });
+    window.addEventListener("touchend", (e) => {
+      const diff = e.changedTouches[0].screenX - touchStartX;
+      if (diff < -50) nextSlide();
+      if (diff > 50) prevSlide();
+    });
+
+    // Initialize Presentation
+    window.addEventListener("DOMContentLoaded", () => {
+      renderSlides();
+      initWebGLBackground();
+    });
+  </script>
+</body>
+</html>

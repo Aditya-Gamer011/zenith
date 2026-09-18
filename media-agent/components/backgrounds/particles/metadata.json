@@ -1,0 +1,37 @@
+{
+  "id": "interactive-particles",
+  "name": "Constellation Particle Field",
+  "category": "background",
+  "source": "magicui",
+  "tags": [
+    "particles",
+    "interactive",
+    "canvas",
+    "hero",
+    "constellation"
+  ],
+  "framework": "html",
+  "motion": "particle-physics",
+  "intensity": 4,
+  "best_for": [
+    "hero",
+    "background",
+    "landing-page"
+  ],
+  "description": "Interactive HTML5 canvas particle field with nodes floating smoothly and connecting via distance-aware hairline vectors.",
+  "code": {
+    "tsx": "import React, { useEffect, useRef } from \"react\";\n\nexport const ParticleField: React.FC<{ color?: string }> = ({ color = \"#38bdf8\" }) => {\n  const canvasRef = useRef<HTMLCanvasElement>(null);\n\n  useEffect(() => {\n    const canvas = canvasRef.current;\n    if (!canvas) return;\n    const ctx = canvas.getContext(\"2d\");\n    if (!ctx) return;\n\n    let animId: number;\n    let w = (canvas.width = window.innerWidth);\n    let h = (canvas.height = window.innerHeight);\n\n    const particles = Array.from({ length: 45 }, () => ({\n      x: Math.random() * w,\n      y: Math.random() * h,\n      vx: (Math.random() - 0.5) * 0.6,\n      vy: (Math.random() - 0.5) * 0.6,\n      r: Math.random() * 2 + 1,\n    }));\n\n    const render = () => {\n      ctx.clearRect(0, 0, w, h);\n      ctx.fillStyle = color;\n      ctx.strokeStyle = color;\n\n      particles.forEach((p, i) => {\n        p.x += p.vx;\n        p.y += p.vy;\n        if (p.x < 0 || p.x > w) p.vx *= -1;\n        if (p.y < 0 || p.y > h) p.vy *= -1;\n\n        ctx.beginPath();\n        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);\n        ctx.fill();\n\n        for (let j = i + 1; j < particles.length; j++) {\n          const p2 = particles[j];\n          const dist = Math.hypot(p.x - p2.x, p.y - p2.y);\n          if (dist < 120) {\n            ctx.globalAlpha = 1 - dist / 120;\n            ctx.lineWidth = 0.5;\n            ctx.beginPath();\n            ctx.moveTo(p.x, p.y);\n            ctx.lineTo(p2.x, p2.y);\n            ctx.stroke();\n            ctx.globalAlpha = 1;\n          }\n        }\n      });\n      animId = requestAnimationFrame(render);\n    };\n\n    render();\n    return () => cancelAnimationFrame(animId);\n  }, [color]);\n\n  return <canvas ref={canvasRef} className=\"fixed inset-0 pointer-events-none z-0\" />;\n};\n",
+    "css": "#particle-canvas {\n  position: fixed;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%;\n  pointer-events: none;\n  z-index: 0;\n  opacity: 0.6;\n}\n",
+    "html": "<canvas id=\"particle-canvas\"></canvas>"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

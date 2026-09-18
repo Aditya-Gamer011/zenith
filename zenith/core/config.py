@@ -101,10 +101,11 @@ class Settings:
     # ── Capabilities ──────────────────────────────────────────────────────
     # Arbitrary shell is OFF by default. Docker/GitHub/system tools are always
     # on (they are safely wrapped) unless individually disabled.
-    allow_shell: bool = _flag("ALLOW_SHELL", default=False)
+    allow_shell: bool = _flag("ALLOW_SHELL", default=True)
     allow_docker: bool = _flag("ALLOW_DOCKER", default=True)
     allow_github: bool = _flag("ALLOW_GITHUB", default=True)
     allow_system: bool = _flag("ALLOW_SYSTEM", default=True)
+    require_approvals: bool = _flag("REQUIRE_APPROVALS", default=_flag("CONFIRM_MUTATING_ACTIONS", default=False))
 
     # Docker socket — mounted read-only into the container (see docker-compose).
     docker_socket: str = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
@@ -131,8 +132,8 @@ class Settings:
     gmail_user: str = os.getenv("GMAIL_USER", os.getenv("MAIL_IMAP_USER", "")).strip()
     # Outbound: Resend
     resend_api_key: str = os.getenv("RESEND_API_KEY", "").strip()
-    resend_from: str = os.getenv("RESEND_FROM", "Zenith <zenith@example.com>").strip()
-    resend_reply_to: str = os.getenv("RESEND_REPLY_TO", "").strip()
+    resend_from: str = os.getenv("RESEND_FROM", "Zenith <zenith@agm.quest>").strip()
+    resend_reply_to: str = os.getenv("RESEND_REPLY_TO", "zenith@agm.quest").strip()
     # Legacy IMAP/SMTP pair (still read if present).
     mail_smtp_host: str = os.getenv("MAIL_SMTP_HOST", os.getenv("MAIL_IMAP_HOST", "")).strip()
     mail_smtp_user: str = os.getenv("MAIL_SMTP_USER", os.getenv("MAIL_IMAP_USER", "")).strip()
@@ -264,7 +265,7 @@ class Settings:
         self.session_secret = os.getenv("SESSION_SECRET", "zenith-identity-session-signing-key-2026").strip()
         self.axiom_db_path = os.getenv("AXIOM_DB_PATH", "/app/axiom_prisma/dev.db").strip()
 
-        self.allow_shell = _flag("ALLOW_SHELL", default=False)
+        self.allow_shell = _flag("ALLOW_SHELL", default=True)
         self.allow_docker = _flag("ALLOW_DOCKER", default=True)
         self.allow_github = _flag("ALLOW_GITHUB", default=True)
         self.allow_system = _flag("ALLOW_SYSTEM", default=True)
@@ -275,8 +276,8 @@ class Settings:
         self.gmail_app_password = os.getenv("GMAIL_APP_PASSWORD", os.getenv("MAIL_IMAP_PASS", "")).strip()
         self.gmail_user = os.getenv("GMAIL_USER", os.getenv("MAIL_IMAP_USER", "")).strip()
         self.resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
-        self.resend_from = os.getenv("RESEND_FROM", "Zenith <zenith@example.com>").strip()
-        self.resend_reply_to = os.getenv("RESEND_REPLY_TO", "").strip()
+        self.resend_from = os.getenv("RESEND_FROM", "Zenith <zenith@agm.quest>").strip()
+        self.resend_reply_to = os.getenv("RESEND_REPLY_TO", "zenith@agm.quest").strip()
 
         self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
         self.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()

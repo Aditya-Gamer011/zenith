@@ -1,0 +1,35 @@
+{
+  "id": "process",
+  "name": "Step-by-Step Flow Layout",
+  "type": "layout",
+  "tags": [
+    "process",
+    "flow",
+    "steps",
+    "sequential",
+    "diagram"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "workflow",
+    "pipeline",
+    "user-journey",
+    "architecture"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium",
+    "playful-youthful"
+  ],
+  "description": "Visual sequential flow converting paragraphs into clear horizontal arrow-linked stage blocks.",
+  "components": [
+    "process-step",
+    "arrow-connector",
+    "step-number"
+  ],
+  "motion": [
+    "stagger-reveal"
+  ],
+  "default_props": {}
+}

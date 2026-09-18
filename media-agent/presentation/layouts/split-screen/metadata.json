@@ -1,0 +1,37 @@
+{
+  "id": "split-screen",
+  "name": "Split Screen 50/50 Layout",
+  "type": "layout",
+  "tags": [
+    "split",
+    "50-50",
+    "visual-thesis",
+    "comparison",
+    "clean"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "thesis",
+    "photo-story",
+    "product-preview",
+    "team"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic",
+    "playful-youthful"
+  ],
+  "description": "Clean 50/50 balance between bold takeaway text on the left and a high-resolution visual/mockup on the right.",
+  "components": [
+    "headline",
+    "bullets-pill",
+    "device-mockup",
+    "photo-container"
+  ],
+  "motion": [
+    "slide-up",
+    "fade"
+  ],
+  "default_props": {}
+}

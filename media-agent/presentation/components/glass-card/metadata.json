@@ -1,0 +1,26 @@
+{
+  "id": "glass-card",
+  "name": "Glassmorphic Container Card",
+  "type": "component",
+  "tags": [
+    "glass",
+    "blur",
+    "card",
+    "frosted",
+    "container"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "cards",
+    "bento",
+    "features"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Frosted glass rounded surface with translucent background, hairline border, and subtle inner glow.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

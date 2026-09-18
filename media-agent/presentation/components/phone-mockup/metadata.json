@@ -1,0 +1,27 @@
+{
+  "id": "phone-mockup",
+  "name": "Mobile Device Mockup Frame",
+  "type": "component",
+  "tags": [
+    "mockup",
+    "phone",
+    "mobile",
+    "ios",
+    "app"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "split-screen",
+    "product-reveal",
+    "mobile"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "playful-youthful",
+    "minimal-premium"
+  ],
+  "description": "Curved smartphone chassis mockup showing responsive application interface.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

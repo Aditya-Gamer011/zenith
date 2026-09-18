@@ -1,0 +1,23 @@
+.aurora-bg-container {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--bg-color, #0d0f12);
+  overflow: hidden;
+}
+.aurora-waves {
+  position: absolute;
+  inset: -50%;
+  background: radial-gradient(circle at 30% 20%, var(--accent-1, #d4a373) 0%, transparent 40%),
+              radial-gradient(circle at 70% 60%, var(--accent-2, #3b82f6) 0%, transparent 45%),
+              radial-gradient(circle at 50% 80%, rgba(212, 163, 115, 0.4) 0%, transparent 35%);
+  filter: blur(80px);
+  opacity: 0.35;
+  animation: aurora-flow 18s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes aurora-flow {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate(6%, -4%) scale(1.1) rotate(6deg); }
+  100% { transform: translate(-5%, 5%) scale(0.95) rotate(-4deg); }
+}

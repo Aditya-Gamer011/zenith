@@ -1,0 +1,36 @@
+{
+  "id": "gradient-heading",
+  "name": "Animated Linear Gradient Heading",
+  "category": "text",
+  "source": "magicui",
+  "tags": [
+    "gradient",
+    "heading",
+    "clip",
+    "iridescent"
+  ],
+  "framework": "html",
+  "motion": "gradient-shift",
+  "intensity": 3,
+  "best_for": [
+    "hero",
+    "title",
+    "landing-page"
+  ],
+  "description": "Multi-stop animated gradient clipped to typography with continuous subtle horizontal hue shifting.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const GradientHeading: React.FC<{ children?: React.ReactNode }> = ({ children = \"Architectural Precision\" }) => (\n  <h2 className=\"text-4xl md:text-6xl font-black tracking-tighter bg-gradient-to-r from-cyan-400 via-indigo-400 to-amber-300 bg-clip-text text-transparent animate-gradient-x\">\n    {children}\n  </h2>\n);\n",
+    "css": ".gradient-heading {\n  font-family: var(--font-heading, sans-serif);\n  font-size: clamp(2.5rem, 6vw, 4.2rem);\n  font-weight: 800;\n  letter-spacing: -0.02em;\n  background: linear-gradient(135deg, var(--text-color, #ffffff) 0%, var(--accent-1, #38bdf8) 50%, var(--accent-2, #818cf8) 100%);\n  background-size: 200% 200%;\n  -webkit-background-clip: text;\n  -webkit-text-fill-color: transparent;\n  animation: gradient-heading-shift 6s ease infinite alternate;\n}\n@keyframes gradient-heading-shift {\n  0% { background-position: 0% 50%; }\n  100% { background-position: 100% 50%; }\n}\n",
+    "html": "<h2 class=\"gradient-heading\">Next-Gen Intelligent Fabric</h2>"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "statement",
+  "name": "One Big Idea Statement Layout",
+  "type": "layout",
+  "tags": [
+    "statement",
+    "one-big-idea",
+    "breathing-room",
+    "typography",
+    "bold"
+  ],
+  "visualIntensity": 2,
+  "bestFor": [
+    "breathing-room",
+    "transition",
+    "quote",
+    "core-message"
+  ],
+  "compatibleStyles": [
+    "minimal-premium",
+    "premium-editorial",
+    "cinematic-futuristic"
+  ],
+  "description": "Single monumental thesis statement giving audiences breathing room between complex analytical slides.",
+  "components": [
+    "monumental-headline",
+    "eyebrow-pill"
+  ],
+  "motion": [
+    "fade",
+    "zoom"
+  ],
+  "default_props": {}
+}

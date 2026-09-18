@@ -1,0 +1,38 @@
+{
+  "id": "glass-card",
+  "name": "Sovereign Glassmorphism Card",
+  "category": "card",
+  "source": "zenith",
+  "tags": [
+    "glassmorphism",
+    "card",
+    "editorial",
+    "blur",
+    "frost"
+  ],
+  "framework": "react",
+  "motion": "hover-lift",
+  "intensity": 3,
+  "best_for": [
+    "features",
+    "dashboard",
+    "bento",
+    "hero"
+  ],
+  "description": "Studio-grade frosted glass card with 16px backdrop blur, subtle inner border illumination, and hover lift elevation.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport interface GlassCardProps {\n  title?: string;\n  subtitle?: string;\n  badge?: string;\n  children?: React.ReactNode;\n  className?: string;\n}\n\nexport const GlassCard: React.FC<GlassCardProps> = ({\n  title = \"Unified Context Engine\",\n  subtitle = \"Maintains persistent awareness across tools, memory, and runtime sandboxes.\",\n  badge = \"Autonomous\",\n  children,\n  className = \"\",\n}) => {\n  return (\n    <div\n      className={`relative p-8 rounded-2xl transition-all duration-300 hover:-translate-y-1.5 ${className}`}\n      style={{\n        background: \"var(--card-glass, rgba(24, 27, 32, 0.78))\",\n        backdropFilter: \"blur(16px)\",\n        WebkitBackdropFilter: \"blur(16px)\",\n        border: \"1px solid var(--border-color, rgba(255, 255, 255, 0.08))\",\n        boxShadow: \"0 20px 40px -15px rgba(0, 0, 0, 0.5)\",\n      }}\n    >\n      {badge && (\n        <span\n          className=\"inline-block px-3 py-1 text-xs font-mono tracking-wider rounded-full mb-4\"\n          style={{\n            background: \"rgba(212, 163, 115, 0.12)\",\n            color: \"var(--accent-1, #d4a373)\",\n            border: \"1px solid rgba(212, 163, 115, 0.25)\",\n          }}\n        >\n          {badge}\n        </span>\n      )}\n      <h3 className=\"text-xl font-bold text-white mb-2 tracking-tight\">{title}</h3>\n      <p className=\"text-sm text-slate-400 leading-relaxed mb-4\">{subtitle}</p>\n      {children}\n    </div>\n  );\n};\n",
+    "css": ".glass-card {\n  position: relative;\n  padding: 32px;\n  border-radius: 20px;\n  background: var(--card-glass, rgba(24, 27, 32, 0.78));\n  backdrop-filter: blur(16px);\n  -webkit-backdrop-filter: blur(16px);\n  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));\n  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);\n  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.3s ease;\n}\n.glass-card:hover {\n  transform: translateY(-6px);\n  border-color: var(--accent-1, rgba(212, 163, 115, 0.4));\n  box-shadow: 0 28px 60px -12px rgba(0, 0, 0, 0.65), 0 0 25px var(--glow-color, rgba(212, 163, 115, 0.15));\n}\n",
+    "html": "<div class=\"glass-card\">\n  <div class=\"glass-badge\">Autonomous Hub</div>\n  <h3 class=\"glass-title\">Cognitive Context Fabric</h3>\n  <p class=\"glass-desc\">Multi-tier memory, real-world vision, and proactive agentic reasoning.</p>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

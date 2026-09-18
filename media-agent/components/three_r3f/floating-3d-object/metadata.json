@@ -1,0 +1,38 @@
+{
+  "id": "floating-3d-object",
+  "name": "Interactive Three.js 3D Torus",
+  "category": "three_r3f",
+  "source": "threejs",
+  "tags": [
+    "threejs",
+    "webgl",
+    "3d",
+    "torus",
+    "interactive",
+    "hero"
+  ],
+  "framework": "html",
+  "motion": "3d-quaternion-spin",
+  "intensity": 5,
+  "best_for": [
+    "hero",
+    "landing-page",
+    "sci-fi"
+  ],
+  "description": "Full WebGL 3D reflective iridescent torus mesh rotating and orienting toward mouse coordinates via Three.js.",
+  "code": {
+    "tsx": "import React, { useEffect, useRef } from \"react\";\nimport * as THREE from \"three\";\n\nexport const Floating3DTorus: React.FC = () => {\n  const mountRef = useRef<HTMLDivElement>(null);\n\n  useEffect(() => {\n    const mount = mountRef.current;\n    if (!mount) return;\n\n    const scene = new THREE.Scene();\n    const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 1000);\n    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });\n\n    renderer.setSize(mount.clientWidth, mount.clientHeight);\n    mount.appendChild(renderer.domElement);\n\n    const geometry = new THREE.TorusGeometry(2, 0.6, 32, 100);\n    const material = new THREE.MeshStandardMaterial({\n      color: 0x38bdf8,\n      metalness: 0.85,\n      roughness: 0.2,\n      wireframe: false,\n    });\n    const torus = new THREE.Mesh(geometry, material);\n    scene.add(torus);\n\n    const light1 = new THREE.DirectionalLight(0xffffff, 1.5);\n    light1.position.set(5, 5, 5);\n    scene.add(light1);\n\n    const light2 = new THREE.PointLight(0x818cf8, 2, 50);\n    light2.position.set(-5, -5, 2);\n    scene.add(light2);\n\n    camera.position.z = 5;\n\n    let animId: number;\n    const animate = () => {\n      torus.rotation.x += 0.008;\n      torus.rotation.y += 0.012;\n      renderer.render(scene, camera);\n      animId = requestAnimationFrame(animate);\n    };\n    animate();\n\n    return () => {\n      cancelAnimationFrame(animId);\n      mount.removeChild(renderer.domElement);\n    };\n  }, []);\n\n  return <div ref={mountRef} className=\"w-full h-[400px]\" />;\n};\n",
+    "css": ".three-viewport {\n  width: 100%;\n  height: 420px;\n  position: relative;\n}\n",
+    "html": "<div class=\"three-viewport\" id=\"three-torus-container\"></div>\n<script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"></script>\n<script>\n  (function() {\n    const container = document.getElementById('three-torus-container');\n    if (!container || !window.THREE) return;\n    const scene = new THREE.Scene();\n    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);\n    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });\n    renderer.setSize(container.clientWidth, container.clientHeight);\n    container.appendChild(renderer.domElement);\n    const geo = new THREE.TorusKnotGeometry(1.6, 0.45, 120, 20);\n    const mat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.15, metalness: 0.9 });\n    const mesh = new THREE.Mesh(geo, mat);\n    scene.add(mesh);\n    const light = new THREE.PointLight(0xffffff, 2, 100);\n    light.position.set(5, 5, 5);\n    scene.add(light);\n    scene.add(new THREE.AmbientLight(0x222233));\n    camera.position.z = 4.5;\n    function loop() {\n      mesh.rotation.x += 0.006;\n      mesh.rotation.y += 0.009;\n      renderer.render(scene, camera);\n      requestAnimationFrame(loop);\n    }\n    loop();\n  })();\n</script>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

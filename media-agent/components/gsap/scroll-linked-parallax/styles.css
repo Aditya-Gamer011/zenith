@@ -1,0 +1,13 @@
+.parallax-section {
+  position: relative;
+  overflow: hidden;
+  padding: 100px 0;
+}
+.parallax-layer-bg {
+  transform: translateY(var(--scroll-offset-bg, 0));
+  will-change: transform;
+}
+.parallax-layer-fg {
+  transform: translateY(var(--scroll-offset-fg, 0));
+  will-change: transform;
+}

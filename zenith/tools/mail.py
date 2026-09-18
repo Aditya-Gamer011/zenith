@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -154,36 +155,56 @@ async def read(uid: str) -> str:
 
 # ── Resend send (as zenith@agm.quest) ────────────────────────────────────────
 
-def _normalize_body(body: str) -> str:
-    """Turn escaped newlines the model sometimes passes ('a\\nb') into real ones.
+def _normalize_body(body: str, has_attachments: bool = False) -> str:
+    """Turn escaped newlines into real ones and sanitize hallucinated domains / local URLs.
 
-    Shared by every send path (plain, with-attachment, and SMTP) so no caller
-    — the orchestrator, email_gateway, reminders — can slip a literal "\n"
-    through to the outbound message or the preview. Real newlines pass through
-    untouched.
+    Shared by every send path (plain, with-attachment, and SMTP).
+    Zenith is an open-source, local-first tool: external email recipients cannot open
+    localhost or imaginary domains like 'app.zenith.os'.
     """
     if not body:
         return body
     import json as _json
+    import re
     try:
         un = _json.loads('"' + body.replace("'", r"\'") + '"')
         if isinstance(un, str):
             body = un
     except Exception:
         pass
-    return body.replace("\\n", "\n").replace("\\r", "")
+    body = body.replace("\\n", "\n").replace("\\r", "")
+
+    # Sanitize hallucinated or local URLs in outbound email bodies
+    # e.g., https://app.zenith.os/..., http://localhost:8005/..., /presentation/..., /api/files/download?...
+    fake_domain_pattern = re.compile(
+        r'https?://(?:app\.zenith\.os|zenith\.local|localhost(?::\d+)?|127\.0\.0\.1(?::\d+)?)[^\s)\]"\'>]*',
+        re.IGNORECASE,
+    )
+    if has_attachments:
+        body = fake_domain_pattern.sub("[Attached directly to this email]", body)
+        # Clean relative presentation/download links
+        body = re.sub(
+            r'\[([^\]]+)\]\((?:/presentation/[^\)]+|/api/files/download[^\)]+)\)',
+            r'\1 [Attached directly to this email]',
+            body,
+        )
+    else:
+        body = fake_domain_pattern.sub("[Local Zenith server deliverable]", body)
+
+    return body
 
 
 async def send(to: str, subject: str, body: str, attachment_path: str = "", attachment_paths: list[str] | None = None) -> str:
     """Send an email via Resend's API, with automatic fallback to Gmail SMTP.
     Attach one or more files (attachment_path for a single path, or
     attachment_paths for several)."""
-    body = _normalize_body(body)
     paths = list(attachment_paths or [])
     if attachment_path:
         paths.insert(0, attachment_path) if attachment_path not in paths else None
     if paths:
         return await send_with_attachment(to, subject, body, paths)
+
+    body = _normalize_body(body, has_attachments=False)
 
     resend_err = None
     if _resend_ok():
@@ -203,18 +224,20 @@ async def send(to: str, subject: str, body: str, attachment_path: str = "", atta
             async with httpx.AsyncClient(timeout=20) as client:
                 resp = await client.post(_RESEND_URL, headers=headers, json=payload)
             if resp.status_code < 400:
-                return f"Email sent to {to} from {settings.resend_from}."
+                return f"Email sent to {to} from {settings.resend_from} via Resend."
             resend_err = f"Resend ({resp.status_code}): {resp.text[:200]}"
         except Exception as exc:
             resend_err = f"Resend exception: {exc}"
 
-    # Fallback to Gmail App Password SMTP if Resend fails or is absent
+        # If Resend is configured, it is the designated outbound provider.
+        # NEVER fall back to the user's personal Gmail account.
+        return f"[mail] Send failed via Resend ({settings.resend_from}): {resend_err}"
+
+    # Dedicated SMTP fallback ONLY if Resend is absent and dedicated SMTP is configured
     if _smtp_ok():
         return await send_legacy_smtp(to, subject, body)
 
-    if resend_err:
-        return f"[mail] Send failed: {resend_err}"
-    return "Email isn't configured for sending (set RESEND_API_KEY or GMAIL_APP_PASSWORD in .env)."
+    return f"Email isn't configured for sending (set RESEND_API_KEY in .env for outbound sending from {settings.resend_from})."
 
 
 _MAX_ATTACHMENT = 25 * 1024 * 1024  # 25 MB
@@ -226,7 +249,7 @@ async def send_with_attachment(to: str, subject: str, body: str, attachment_path
     import mimetypes
     import re
 
-    body = _normalize_body(body)
+    body = _normalize_body(body, has_attachments=True)
 
     # Normalize to a list of raw path strings.
     if isinstance(attachment_path, (list, tuple)):
@@ -243,33 +266,156 @@ async def send_with_attachment(to: str, subject: str, body: str, attachment_path
     if not outdir.exists() and Path("/tmp/zenith-files").exists():
         outdir = Path("/tmp/zenith-files")
 
-    def resolve_one(raw: str) -> Path:
+    def resolve_one(raw: str) -> Optional[Path]:
         raw = (raw or "").strip().strip("'\"")
-        m = re.search(r"((?:[A-Za-z]:[\\/]|/tmp/zenith-files/|/)[^\s)]+)", raw)
-        if m:
-            raw = m.group(1)
-        p = Path(raw).expanduser()
-        if p.is_file():
-            return p
-        cand = outdir / p.name
-        if cand.is_file():
-            return cand
-        stem = p.stem.split("_")[0]
-        matches = sorted((f for f in outdir.glob(f"{stem}*") if f.is_file()),
-                         key=lambda f: f.stat().st_mtime, reverse=True)
-        return matches[0] if matches else p
+        if not raw:
+            return None
+
+        # 1. Check if raw is already an exact existing file path on disk
+        p_direct = Path(raw).expanduser()
+        if p_direct.is_file():
+            return p_direct
+
+        # 2. If download query parameter is present: ?filename=...
+        if "filename=" in raw:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(raw)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "filename" in qs and qs["filename"]:
+                raw = qs["filename"][0]
+                p_direct = Path(raw).expanduser()
+
+        # 3. If presentation URL is present: /presentation/<deck_id>
+        m_deck = re.search(r'/presentation/([A-Za-z0-9_\-]+)', raw)
+        if m_deck:
+            raw = m_deck.group(1)
+
+        # 4. Check known search directories directly with filename
+        search_dirs = [
+            outdir,
+            Path("/tmp/zenith-files"),
+            Path("static/generated"),
+            Path("static/presentations"),
+        ]
+        for sdir in search_dirs:
+            if not sdir.exists():
+                continue
+            cand = sdir / p_direct.name
+            if cand.is_file():
+                return cand
+
+        # Extract subject/body keywords for context-aware validation
+        stop_words = {"the", "and", "for", "with", "presentation", "deck", "slides", "ppt", "document", "report", "file", "test", "your", "here", "this", "from", "sent", "attached", "attachment"}
+        context_tokens = [
+            t.lower() for t in re.split(r'[-_\s,.:;!?()"\']+', f"{subject} {body}")
+            if len(t) >= 3 and t.lower() not in stop_words
+        ]
+
+        generic_presentation = any(raw.lower().strip() == g for g in ("presentation.pptx", "presentation", "deck", "slides", "ppt", "latest.pptx", "the presentation", "the deck"))
+        generic_doc = any(raw.lower().strip() == g for g in ("document.pdf", "document.docx", "document", "report", "report.pdf", "latest.pdf", "the document"))
+        is_generic = generic_presentation or generic_doc
+
+        # 5. Check SQLite artifact store via smart find_artifact
+        art_path = None
+        try:
+            from ..memory import store
+            art_type = ""
+            raw_lower = raw.lower()
+            if any(ext in raw_lower for ext in (".pptx", "presentation", "deck", "slide", "ppt")):
+                art_type = "presentation"
+            elif any(ext in raw_lower for ext in (".pdf", ".docx", "document", "report")):
+                art_type = "document"
+
+            art = store.find_artifact(raw, artifact_type=art_type)
+            if art and art.get("file_path"):
+                art_p = Path(art["file_path"])
+                if art_p.is_file():
+                    art_path = art_p
+                else:
+                    for sdir in search_dirs:
+                        if sdir.exists() and (sdir / art_p.name).is_file():
+                            art_path = sdir / art_p.name
+                            break
+        except Exception as e:
+            log.debug("find_artifact error in mail resolve_one: %s", e)
+
+        # If query was a specific artifact ID or exact filename and matched artifact store, return it
+        if not is_generic and art_path:
+            return art_path
+
+        # 6. Case-insensitive search in search directories for matching keywords
+        stem = p_direct.stem
+        for prefix in ("presentation_", "deck_", "doc_", "report_"):
+            if stem.lower().startswith(prefix):
+                stem = stem[len(prefix):]
+
+        raw_keywords = re.split(r'[-_\s,.]+', stem)
+        keywords = [k.lower() for k in raw_keywords if len(k) >= 3 and k.lower() not in stop_words]
+
+        if not is_generic and keywords:
+            for sdir in search_dirs:
+                if not sdir.exists():
+                    continue
+                ext = p_direct.suffix.lower()
+                candidates = []
+                for f in sdir.glob("*"):
+                    if not f.is_file() or "pytest" in f.name:
+                        continue
+                    if ext and f.suffix.lower() != ext:
+                        continue
+                    fname_lower = f.name.lower()
+                    matched_kw = sum(1 for kw in keywords if kw in fname_lower)
+                    if matched_kw > 0:
+                        candidates.append((matched_kw, f.stat().st_mtime, f))
+                if candidates:
+                    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                    return candidates[0][2]
+
+        # 7. Safe Recency & Context Fallback ONLY when query is generic (e.g. "presentation.pptx" or "document.pdf")
+        if is_generic:
+            target_ext = ".pptx" if generic_presentation else (".pdf" if ".pdf" in raw.lower() else ".docx")
+            now = time.time()
+            all_candidates: list[tuple[int, float, Path]] = []
+
+            # Add art_path if valid and recent (< 2 hours)
+            if art_path and art_path.is_file():
+                mtime = art_path.stat().st_mtime
+                if now - mtime < 7200:
+                    topic_score = sum(1 for t in context_tokens if t in art_path.name.lower())
+                    all_candidates.append((topic_score, mtime, art_path))
+
+            # Scan search directories for recent files (< 2 hours)
+            for sdir in search_dirs:
+                if not sdir.exists():
+                    continue
+                for f in sdir.glob(f"*{target_ext}"):
+                    if not f.is_file() or "pytest" in f.name:
+                        continue
+                    mtime = f.stat().st_mtime
+                    if now - mtime < 7200:
+                        topic_score = sum(1 for t in context_tokens if t in f.name.lower())
+                        all_candidates.append((topic_score, mtime, f))
+
+            if all_candidates:
+                # Sort by topic score (if context tokens present) then recency mtime
+                all_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                # If context tokens were present and the top candidate matches, ensure no conflict
+                return all_candidates[0][2]
+
+        # If we cannot verify with confidence, NEVER guess or send an unrelated file!
+        return None
 
     # Resolve all requested files, keeping the given order.
     paths: list[Path] = []
     seen = set()
     for raw_path in raws:
         p = resolve_one(raw_path)
-        if p.is_file() and p not in seen:
+        if p and p.is_file() and p not in seen:
             paths.append(p)
             seen.add(p)
 
     if not paths:
-        return f"[mail] Attachment not found: {[a for a in raws]}"
+        return f"[mail] Attachment not found: Could not find any presentation or file matching {[a for a in raws]}. Please verify the requested file name."
 
     # Size limit applies per-file and in total.
     total = 0
@@ -314,18 +460,20 @@ async def send_with_attachment(to: str, subject: str, body: str, attachment_path
                 resp = await client.post(_RESEND_URL, headers=headers, json=payload)
             if resp.status_code < 400:
                 names = ", ".join(a["filename"] for a in attachments)
-                return f"Email sent to {to} with attachment(s): {names}."
+                return f"Email sent to {to} with attachment(s): {names} from {settings.resend_from} via Resend."
             resend_err = f"Resend ({resp.status_code}): {resp.text[:200]}"
         except Exception as exc:
             resend_err = f"Resend exception: {exc}"
 
-    # ── SMTP fallback with attachment(s) ────────────────────────────────
+        # If Resend is configured, it is the designated outbound provider.
+        # NEVER fall back to the user's personal Gmail account.
+        return f"[mail] Send-with-attachment failed via Resend ({settings.resend_from}): {resend_err}"
+
+    # ── Dedicated SMTP fallback ONLY if Resend is absent and dedicated SMTP is configured ──
     if _smtp_ok():
         return await _smtp_send_with_attachment(to, subject, body, paths)
 
-    if resend_err:
-        return f"[mail] Send-with-attachment failed: {resend_err}"
-    return "Email isn't configured for sending."
+    return f"Email isn't configured for sending (set RESEND_API_KEY in .env for outbound sending from {settings.resend_from})."
 
 
 async def _smtp_send_with_attachment(
@@ -351,7 +499,7 @@ async def _smtp_send_with_attachment(
 
     try:
         msg = MIMEMultipart()
-        msg["From"] = f"Zenith <{user}>"
+        msg["From"] = settings.resend_from or f"Zenith <{user}>"
         msg["To"] = to
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
@@ -370,25 +518,25 @@ async def _smtp_send_with_attachment(
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _smtp_send, host, 587, user, password, to, msg)
         names = ", ".join(fp.name for fp in paths)
-        return f"Email sent to {to} with attachment(s): {names} via Gmail SMTP."
+        return f"Email sent to {to} from {settings.resend_from} with attachment(s): {names} via SMTP."
     except Exception as exc:
         return f"[mail] SMTP send-with-attachment failed: {exc}"
 
 
 def _smtp_ok() -> bool:
-    user = settings.gmail_user or settings.mail_smtp_user
-    password = settings.gmail_app_password or settings.mail_smtp_pass
-    return bool(user and password)
+    # Dedicated SMTP only. Having GMAIL_USER/GMAIL_APP_PASSWORD for IMAP reading
+    # must NEVER be used to send outbound emails as the user's personal Gmail!
+    return bool(settings.mail_smtp_host and settings.mail_smtp_user and settings.mail_smtp_pass)
 
 
 async def send_legacy_smtp(to: str, subject: str, body: str) -> str:
-    """SMTP send via Gmail App Password or configured SMTP server."""
+    """SMTP send via configured dedicated SMTP server."""
     body = _normalize_body(body)
     if not _smtp_ok():
-        return "No SMTP configured."
-    host = settings.mail_smtp_host or "smtp.gmail.com"
-    user = settings.gmail_user or settings.mail_smtp_user
-    password = settings.gmail_app_password or settings.mail_smtp_pass
+        return "No dedicated SMTP configured."
+    host = settings.mail_smtp_host
+    user = settings.mail_smtp_user
+    password = settings.mail_smtp_pass
     try:
         import smtplib
         from email.message import EmailMessage
@@ -396,7 +544,7 @@ async def send_legacy_smtp(to: str, subject: str, body: str) -> str:
         return "[mail] smtplib unavailable."
     try:
         msg = EmailMessage()
-        msg["From"] = f"Zenith <{user}>"
+        msg["From"] = settings.resend_from or f"Zenith <{user}>"
         msg["To"] = to
         msg["Subject"] = subject
         msg.set_content(body)
@@ -406,7 +554,7 @@ async def send_legacy_smtp(to: str, subject: str, body: str) -> str:
             _smtp_send,
             host, 587, user, password, to, msg,
         )
-        return f"Email sent to {to} via Gmail SMTP."
+        return f"Email sent to {to} from {settings.resend_from} via SMTP."
     except Exception as exc:
         return f"[mail] SMTP send failed: {exc}"
 

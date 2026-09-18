@@ -1,0 +1,26 @@
+{
+  "id": "editorial-caption",
+  "name": "Micro Editorial Caption",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "caption",
+    "metadata",
+    "editorial",
+    "refined"
+  ],
+  "visualIntensity": 2,
+  "bestFor": [
+    "editorial",
+    "case-study",
+    "split-screen"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Monospaced or small-caps metadata caption providing technical precision and context.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

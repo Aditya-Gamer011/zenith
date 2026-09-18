@@ -188,8 +188,19 @@ async def test_run_tests_execution():
 
 # ── 4. Git Diff Safety Gate & Injection Resistance ──────────────────────────
 @pytest.mark.anyio
-async def test_inspect_diff_and_injection_defense():
-    diff_report = await inspect_diff()
+async def test_inspect_diff_and_injection_defense(tmp_path):
+    import subprocess
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_dir, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_dir, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, capture_output=True)
+    test_f = repo_dir / "file.txt"
+    test_f.write_text("initial\n")
+    subprocess.run(["git", "add", "file.txt"], cwd=repo_dir, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, capture_output=True)
+    test_f.write_text("initial\nnew line\n")
+    diff_report = await inspect_diff(repo_path=str(repo_dir))
     assert "Git Diff & Change Minimization" in diff_report
     assert "Lines Added" in diff_report
 

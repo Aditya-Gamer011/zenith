@@ -1,0 +1,36 @@
+{
+  "id": "timeline",
+  "name": "Connected Roadmap Timeline Layout",
+  "type": "layout",
+  "tags": [
+    "timeline",
+    "roadmap",
+    "milestones",
+    "quarters",
+    "process"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "roadmap",
+    "milestones",
+    "history",
+    "execution"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic",
+    "playful-youthful"
+  ],
+  "description": "Horizontal milestone roadmap with connected neon/champagne hairline axes and progressive node status tags.",
+  "components": [
+    "timeline-node",
+    "timeline-axis",
+    "milestone-badge"
+  ],
+  "motion": [
+    "slide-up",
+    "stagger-reveal"
+  ],
+  "default_props": {}
+}

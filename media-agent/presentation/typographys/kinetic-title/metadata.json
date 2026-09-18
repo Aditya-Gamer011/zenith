@@ -1,0 +1,26 @@
+{
+  "id": "kinetic-title",
+  "name": "Kinetic Oversized Headline",
+  "type": "typography",
+  "tags": [
+    "typography",
+    "kinetic",
+    "headline",
+    "oversized",
+    "bold"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "statement",
+    "closing"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "Monumental headline with deliberate word-weight hierarchy and highlighted emphasis keywords.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -488,45 +488,297 @@ async def clear():
 
 @app.post("/api/upload")
 async def upload_file_endpoint(file: Request):
-    """Receive a user-uploaded file or image, save it, and return metadata & static URL."""
+    """Receive a user-uploaded file or image, save it, extract text/preview, and return metadata & static URL."""
     from pathlib import Path
-    from fastapi import UploadFile, File
     import time
+    import tempfile
+    import base64
+    import mimetypes
 
     form = await file.form()
     uploaded_file = form.get("file")
     if not uploaded_file:
         return {"status": "error", "message": "No file uploaded"}
 
-    import tempfile
     uploads_dir = Path(settings.static_dir) / "uploads"
     tmp_dir = Path(tempfile.gettempdir()) / "zenith-files"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    try:
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
     ts = int(time.time())
-    orig_name = getattr(uploaded_file, "filename", "file")
+    orig_name = getattr(uploaded_file, "filename", "file") or "file"
     clean_name = f"{ts}_{orig_name.replace(' ', '_')}"
 
     out_path = uploads_dir / clean_name
     tmp_path = tmp_dir / clean_name
 
     content = await uploaded_file.read()
-    out_path.write_bytes(content)
-    tmp_path.write_bytes(content)
+    
+    saved_successfully = False
+    try:
+        out_path.write_bytes(content)
+        saved_successfully = True
+    except Exception as exc:
+        log.warning("Could not write to %s: %s; falling back to tmp_dir", out_path, exc)
 
-    ext = out_path.suffix.lower()
-    is_img = ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")
+    try:
+        tmp_path.write_bytes(content)
+    except Exception:
+        pass
+
+    final_path = out_path if saved_successfully else tmp_path
+    url = f"/static/uploads/{clean_name}" if saved_successfully else f"/api/files/download?path={tmp_path}"
+
+    ext = final_path.suffix.lower()
+    is_img = ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp")
+    is_pdf = ext == ".pdf"
+    is_docx = ext in (".docx", ".doc")
+    is_pptx = ext in (".pptx", ".ppt")
+    is_xlsx = ext in (".xlsx", ".xls", ".xlsm", ".xltx", ".xltm")
+    is_csv = ext in (".csv", ".tsv")
+    is_text = ext in (".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx", ".json",
+                      ".html", ".css", ".yaml", ".yml", ".xml", ".sh", ".sql", ".log",
+                      ".env", ".c", ".cpp", ".h", ".rs", ".go", ".java") or not is_img
+
+    extracted_text = ""
+    b64 = ""
+    mime_type = mimetypes.guess_type(clean_name)[0] or ("image/jpeg" if is_img else "application/octet-stream")
+
+    if is_img and len(content) <= 8 * 1024 * 1024:
+        try:
+            b64 = base64.b64encode(content).decode("ascii")
+        except Exception:
+            pass
+    elif is_pptx and ext == ".pptx":
+        try:
+            import pptx
+            prs = pptx.Presentation(final_path)
+            slide_summaries = []
+            for idx, slide in enumerate(prs.slides):
+                if idx >= 30:
+                    break
+                title = slide.shapes.title.text.strip().replace("\n", " ") if slide.shapes.title and slide.shapes.title.text else f"Slide {idx + 1}"
+                body_items = []
+                for shape in slide.shapes:
+                    if shape == slide.shapes.title:
+                        continue
+                    if shape.has_text_frame:
+                        for p in shape.text_frame.paragraphs:
+                            t = p.text.strip()
+                            if t and t != title:
+                                indent = "  " * (p.level or 0)
+                                body_items.append(f"{indent}- {t}")
+                    elif shape.has_table:
+                        for row in shape.table.rows:
+                            r_cells = [c.text.strip().replace("\n", " ").replace("|", "\\|") for c in row.cells]
+                            body_items.append("| " + " | ".join(r_cells) + " |")
+                notes = ""
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                    nt = slide.notes_slide.notes_text_frame.text.strip()
+                    if nt:
+                        notes = f"\n  (Speaker Notes: {nt})"
+                body_text = "\n".join(body_items) if body_items else "  (Visual/Media slide)"
+                slide_summaries.append(f"--- Slide {idx + 1}: {title} ---\n{body_text}{notes}")
+            extracted_text = f"📊 [PowerPoint Presentation: {orig_name} ({len(prs.slides)} slides)]\n\n" + "\n\n".join(slide_summaries)
+        except Exception as exc:
+            log.warning("PPTX extraction failed for %s: %s", clean_name, exc)
+    elif is_xlsx and ext in (".xlsx", ".xlsm", ".xltx", ".xltm"):
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(final_path, data_only=True)
+            sheet_summaries = []
+            for sname in wb.sheetnames[:5]:
+                ws = wb[sname]
+                rows = list(ws.iter_rows(values_only=True))
+                while rows and not any(c is not None and str(c).strip() for c in rows[-1]):
+                    rows.pop()
+                if not rows:
+                    sheet_summaries.append(f"--- Sheet: {sname} (Empty) ---")
+                    continue
+                first_row = [str(c).strip().replace("|", "\\|") if c is not None and str(c).strip() else f"Col {i+1}" for i, c in enumerate(rows[0][:15])]
+                table_lines = [
+                    f"--- Sheet: {sname} ({len(rows)} rows) ---",
+                    "| " + " | ".join(first_row) + " |",
+                    "| " + " | ".join(["---"] * len(first_row)) + " |",
+                ]
+                for r in rows[1:40]:
+                    cells = [str(c).strip().replace("\n", " ").replace("|", "\\|") if c is not None else "" for c in r[:15]]
+                    while len(cells) < len(first_row):
+                        cells.append("")
+                    table_lines.append("| " + " | ".join(cells) + " |")
+                sheet_summaries.append("\n".join(table_lines))
+            extracted_text = f"📊 [Excel Spreadsheet: {orig_name} ({len(wb.sheetnames)} sheets)]\n\n" + "\n\n".join(sheet_summaries)
+        except Exception as exc:
+            log.warning("XLSX extraction failed for %s: %s", clean_name, exc)
+    elif is_csv:
+        try:
+            import csv
+            delim = "\t" if ext == ".tsv" else ","
+            text_str = content.decode("utf-8", errors="replace")
+            reader = list(csv.reader(text_str.splitlines(), delimiter=delim))
+            while reader and not any(c.strip() for c in reader[-1]):
+                reader.pop()
+            if reader:
+                headers = [h.strip().replace("|", "\\|") if h.strip() else f"Col {i+1}" for i, h in enumerate(reader[0][:15])]
+                table_lines = [
+                    f"📋 [CSV/TSV Table: {orig_name} ({len(reader)} rows)]",
+                    "| " + " | ".join(headers) + " |",
+                    "| " + " | ".join(["---"] * len(headers)) + " |",
+                ]
+                for r in reader[1:50]:
+                    cells = [(c.strip().replace("\n", " ").replace("|", "\\|") if c else "") for c in r[:15]]
+                    while len(cells) < len(headers):
+                        cells.append("")
+                    table_lines.append("| " + " | ".join(cells) + " |")
+                extracted_text = "\n".join(table_lines)
+        except Exception as exc:
+            log.warning("CSV extraction failed for %s: %s", clean_name, exc)
+    elif is_pdf:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(final_path)
+            pages = []
+            for idx, page in enumerate(reader.pages[:30]):
+                txt = page.extract_text() or ""
+                if txt.strip():
+                    pages.append(f"--- Page {idx + 1} ---\n{txt.strip()}")
+            extracted_text = "\n\n".join(pages)
+        except Exception as exc:
+            log.warning("PDF extraction failed for %s: %s", clean_name, exc)
+    elif is_docx and ext == ".docx":
+        try:
+            import docx
+            doc = docx.Document(final_path)
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            table_lines = []
+            for t_idx, tbl in enumerate(doc.tables[:3]):
+                table_lines.append(f"\n[Table {t_idx + 1}]")
+                for row in tbl.rows[:10]:
+                    table_lines.append("| " + " | ".join(c.text.strip().replace("\n", " ") for c in row.cells) + " |")
+            extracted_text = "\n".join(paragraphs) + ("\n" + "\n".join(table_lines) if table_lines else "")
+        except Exception as exc:
+            log.warning("DOCX extraction failed for %s: %s", clean_name, exc)
+    elif is_text:
+        try:
+            extracted_text = content.decode("utf-8", errors="replace")[:40000]
+        except Exception:
+            pass
 
     return {
         "status": "ok",
         "filename": orig_name,
         "saved_name": clean_name,
-        "path": str(out_path),
-        "url": f"/static/uploads/{clean_name}",
+        "path": str(final_path),
+        "url": url,
         "size": len(content),
         "is_image": is_img,
+        "mime": mime_type,
+        "extracted_text": extracted_text[:30000] if extracted_text else "",
+        "b64": b64,
     }
+
+
+# ─── File Download & Presentation Delivery Endpoints ─────────────────────────
+
+@app.api_route("/api/files/download", methods=["GET", "HEAD"])
+async def api_download_file(path: str | None = None, filename: str | None = None):
+    """Download a generated file or attachment safely with path-traversal protection."""
+    import tempfile
+    import mimetypes
+
+    if not path and not filename:
+        return JSONResponse({"error": "Missing path or filename parameter"}, status_code=400)
+
+    target: Path | None = None
+    if path:
+        cand = Path(path)
+        if cand.is_absolute():
+            target = cand
+        else:
+            for base in [settings.static_dir.parent, settings.static_dir, Path.cwd()]:
+                check = (base / cand).resolve()
+                if check.exists():
+                    target = check
+                    break
+            if not target:
+                target = (settings.static_dir.parent / cand).resolve()
+    elif filename:
+        # Check standard generation and upload directories
+        for search_dir in [
+            settings.static_dir / "generated",
+            settings.static_dir / "presentations",
+            settings.static_dir / "uploads",
+            Path("/tmp/zenith-files"),
+            Path(tempfile.gettempdir()) / "zenith-files",
+        ]:
+            check = (search_dir / filename).resolve()
+            if check.exists():
+                target = check
+                break
+
+    if not target or not target.exists() or not target.is_file():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+
+    # Path traversal protection: ensure resolved path is within permitted directories
+    resolved = target.resolve()
+    allowed_prefixes = [
+        str(settings.static_dir.resolve()),
+        str(settings.static_dir.parent.resolve()),
+        "/tmp",
+        tempfile.gettempdir(),
+    ]
+    if not any(str(resolved).startswith(p) for p in allowed_prefixes):
+        return JSONResponse({"error": "Access denied"}, status_code=403)
+
+    content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+    return FileResponse(
+        path=str(resolved),
+        media_type=content_type,
+        filename=resolved.name,
+        headers={"Content-Disposition": f'attachment; filename="{resolved.name}"'},
+    )
+
+
+@app.api_route("/presentation/{deck_id}", methods=["GET", "HEAD"])
+async def view_presentation_page(deck_id: str):
+    """Serve the 3D cinematic web presentation viewer."""
+    clean_id = deck_id[:-5] if deck_id.endswith(".html") else deck_id
+    html_path = settings.static_dir / "presentations" / f"{clean_id}.html"
+    if not html_path.exists():
+        alt_path = settings.static_dir / f"{clean_id}.html"
+        if alt_path.exists():
+            html_path = alt_path
+        else:
+            return HTMLResponse(
+                f"<div style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;padding:60px 20px;text-align:center;background:#0d1117;color:#c9d1d9;min-height:100vh;'>"
+                f"<h2 style='color:#f85149;margin-bottom:12px;'>Presentation Not Found</h2>"
+                f"<p style='color:#8b949e;max-width:500px;margin:0 auto 24px;'>The requested deck <code>{clean_id}</code> was not found or has not been generated yet.</p>"
+                f"<a href='/' style='display:inline-block;padding:8px 16px;background:#238636;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:500;'>Return to Dashboard</a>"
+                f"</div>",
+                status_code=404,
+            )
+    return FileResponse(
+        str(html_path),
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/api/presentations/{deck_id}")
+async def api_get_presentation(deck_id: str):
+    """Retrieve full metadata, structured slides, and theme for a presentation artifact."""
+    clean_id = deck_id[:-5] if deck_id.endswith(".html") else deck_id
+    art = store.get_artifact(clean_id)
+    if not art:
+        return JSONResponse({"error": f"Presentation '{clean_id}' not found"}, status_code=404)
+    return JSONResponse(art)
 
 
 @app.post("/api/transcribe")
@@ -1091,6 +1343,18 @@ async def ws_chat(websocket: WebSocket):
         "user": settings.user_name or "Friend",
     })
 
+    # Re-sync any pending confirmations immediately to the newly connected/reconnected client
+    try:
+        for p in _orpheus.confirm_gate.get_pending():
+            await websocket.send_json({
+                "type": "confirm",
+                "id": p["id"],
+                "tool": p["tool"],
+                "message": p["message"],
+            })
+    except Exception:
+        pass
+
     queue = asyncio.Queue()
     hub.subscribe(queue)
     _pending_ws.add(queue)
@@ -1113,13 +1377,32 @@ async def ws_chat(websocket: WebSocket):
 
     sender_task = asyncio.create_task(feed_sender())
 
+    turn_is_voice: bool = False
+
     async def emit(evt: dict):
         if evt.get("type") == "ping":
             return
+        if evt.get("type") == "ack" and turn_is_voice and evt.get("text"):
+            try:
+                spoke = await speak_final(evt["text"])
+                if isinstance(spoke, str) and spoke.startswith('{"'):
+                    s_data = json.loads(spoke)
+                    if isinstance(s_data, dict) and s_data.get("audio"):
+                        evt["audio"] = s_data["audio_b64"]
+                        evt["audio_mime"] = s_data.get("audio_mime", "audio/wav")
+                        evt["model"] = s_data.get("model", "")
+            except Exception as e:
+                log.warning("Could not synthesize ack audio in ws_chat: %s", e)
         try:
             await websocket.send_json(evt)
         except Exception:
             pass
+        for q in list(_pending_ws):
+            if q is not queue:
+                try:
+                    q.put_nowait(evt)
+                except Exception:
+                    pass
 
     async def speak_final(text: str) -> str:
         """Synthesize Zenith's final reply to spoken audio for the voice path.
@@ -1132,6 +1415,7 @@ async def ws_chat(websocket: WebSocket):
         """
         try:
             from zenith.voice import live
+            text = live.strip_conversational_cliches(text)
             if live.available():
                 turn = await asyncio.wait_for(
                     live.live_speak(text, _orpheus.build_system_prompt()),
@@ -1151,17 +1435,27 @@ async def ws_chat(websocket: WebSocket):
 
     active_turn_task: asyncio.Task | None = None
 
-    async def run_turn(prompt_text: str, is_v: bool):
+    async def run_turn(prompt_text: str, is_v: bool, files: list[dict] | None = None):
+        nonlocal turn_is_voice
+        turn_is_voice = is_v
         try:
             try:
                 await websocket.send_json({"type": "agent_start", "prompt": prompt_text})
             except Exception:
                 pass
-            final = await _orpheus.handle(prompt_text, emit)
+            final = await _orpheus.handle(prompt_text, emit, files=files)
             try:
+                if is_v:
+                    from zenith.voice import live
+                    final = live.strip_conversational_cliches(final)
                 payload = {"type": "done", "text": final}
                 if is_v:
-                    spoke = await speak_final(final)
+                    from zenith.voice import live
+                    # In voice mode, speak ONLY the completion report (the text after the separator)
+                    # so the acknowledgment isn't spoken twice.
+                    text_to_speak = final.split("\n\n---\n\n")[-1] if "\n\n---\n\n" in final else final
+                    text_to_speak = live.strip_conversational_cliches(text_to_speak)
+                    spoke = await speak_final(text_to_speak)
                     # speak_final returns either a string (text fallback) or
                     # a JSON string carrying base64 audio.
                     if isinstance(spoke, str) and spoke.startswith('{"'):
@@ -1170,10 +1464,13 @@ async def ws_chat(websocket: WebSocket):
                         except Exception:
                             pass
                         if isinstance(spoke, dict) and spoke.get("audio"):
-                            payload = {"type": "done", "text": {
+                            payload = {
+                                "type": "done",
+                                "text": final,
                                 "audio": spoke["audio_b64"],
-                                "audio_mime": spoke.get("audio_mime", "audio/webm"),
-                                "model": spoke.get("model", "")}}
+                                "audio_mime": spoke.get("audio_mime", "audio/wav"),
+                                "model": spoke.get("model", ""),
+                            }
                 await websocket.send_json(payload)
             except Exception:
                 pass
@@ -1218,7 +1515,8 @@ async def ws_chat(websocket: WebSocket):
                 continue
 
             prompt = data.get("prompt") or data.get("message") or ""
-            if not prompt.strip():
+            files = data.get("files") or []
+            if not prompt.strip() and not files:
                 continue
 
             # Zenith should know the turn arrived by voice so it can reply in
@@ -1231,7 +1529,7 @@ async def ws_chat(websocket: WebSocket):
             if active_turn_task and not active_turn_task.done():
                 active_turn_task.cancel()
 
-            active_turn_task = asyncio.create_task(run_turn(prompt, is_voice))
+            active_turn_task = asyncio.create_task(run_turn(prompt, is_voice, files=files))
             _active_chat_turns.add(active_turn_task)
             active_turn_task.add_done_callback(_active_chat_turns.discard)
             await asyncio.sleep(0.01)
@@ -1240,8 +1538,11 @@ async def ws_chat(websocket: WebSocket):
     except Exception:
         pass
     finally:
-        if active_turn_task and not active_turn_task.done():
-            active_turn_task.cancel()
+        # NOTE: Do NOT cancel active_turn_task here on passive WebSocket disconnect!
+        # Background agent tasks, tool executions, and confirmation gates must survive
+        # browser tab switching and temporary network reconnects.
+        # Active turns are only cancelled via explicit user stop (mtype in ("stop", "cancel")),
+        # /api/chat/stop, or when a new user prompt supersedes it.
         hub.unsubscribe(queue)
         _pending_ws.discard(queue)
         sender_task.cancel()
@@ -1282,6 +1583,8 @@ async def ws_live(websocket: WebSocket):
         await websocket.close()
         return
 
+    await websocket.send_json({"type": "ready", "model": session.model})
+
     async def upstream():
         """Relay the model's audio/events to the browser."""
         try:
@@ -1296,12 +1599,12 @@ async def ws_live(websocket: WebSocket):
                     await websocket.send_json({"type": "tool",
                                                "name": payload.get("name", ""),
                                                "args": payload.get("args", {})})
+                elif kind == "interrupted":
+                    await websocket.send_json({"type": "interrupted"})
                 elif kind == "done":
                     await websocket.send_json({"type": "done"})
                     # The Live session persists across turns — listen for the next
                     # utterance on the SAME WebSocket instead of ending here.
-                    # events() breaks its inner loop after a turn and continues,
-                    # so this async-for keeps receiving each subsequent turn.
                 elif kind == "error":
                     await websocket.send_json({"type": "error", "error": payload})
         except Exception:
@@ -1325,6 +1628,8 @@ async def ws_live(websocket: WebSocket):
                 t = cmd.get("type")
                 if t == "end":
                     await session.end_turn()
+                elif t in ("barge_in", "interrupt"):
+                    await session.interrupt()
                 elif t == "close":
                     break
                 continue

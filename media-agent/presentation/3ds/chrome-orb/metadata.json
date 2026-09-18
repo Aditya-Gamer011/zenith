@@ -1,0 +1,25 @@
+{
+  "id": "chrome-orb",
+  "name": "Iridescent Chrome Orb",
+  "type": "3d",
+  "tags": [
+    "3d",
+    "chrome",
+    "orb",
+    "metallic",
+    "iridescent"
+  ],
+  "visualIntensity": 5,
+  "bestFor": [
+    "cinematic-hero",
+    "split-screen"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "Reflective metallic chrome sphere reacting to directional studio lighting.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

@@ -1,0 +1,31 @@
+{
+  "id": "case-study",
+  "name": "Challenge-Solution-Impact Layout",
+  "type": "layout",
+  "tags": [
+    "case-study",
+    "validation",
+    "customer",
+    "results"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "customer-story",
+    "proof-point",
+    "validation"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic"
+  ],
+  "description": "Three-column progressive case study layout tracking Problem -> Architecture -> Quantifiable Outcome.",
+  "components": [
+    "story-card",
+    "metric-pill"
+  ],
+  "motion": [
+    "stagger-reveal"
+  ],
+  "default_props": {}
+}

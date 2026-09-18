@@ -52,16 +52,49 @@ import base64
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 
 log = logging.getLogger("zenith.voice.live")
 
 LIVE_ENABLED = os.getenv("LIVE_VOICE_ENABLED", "yes").strip().lower() in {"1", "true", "yes", "on"}
-# Gemini 3.1 Flash Live is the ONLY model we ship by default — the 2.5 native
-# audio model 1011s on every key, so including it just adds dead-weight retries.
-# Override via .env if a future model lands.
-_LIVE_MODELS_ENV = os.getenv("LIVE_MODELS", "gemini-3.1-flash-live-preview")
+
+# Prioritized Gemini Live model fallback chain:
+# 1. gemini-3.8-live-extended-thinking: Deep reasoning voice model with active thinkingLevel & asynchronous NON_BLOCKING tool calling.
+# 2. gemini-3.8-live: Primary conversational powerhouse — low latency, native audio dialog, tool execution.
+# 3. gemini-3.1-flash-live-preview: Ultra-fast secondary fallback.
+# 4. gemini-2.5-flash-native-audio-latest: High-capacity 1M TPM / unlimited RPM native audio dialog fallback.
+_DEFAULT_LIVE_MODELS = (
+    "gemini-3.8-live-extended-thinking,"
+    "gemini-3.8-live,"
+    "gemini-3.1-flash-live-preview,"
+    "gemini-2.5-flash-native-audio-latest"
+)
+_LIVE_MODELS_ENV = os.getenv("LIVE_MODELS", _DEFAULT_LIVE_MODELS)
 LIVE_MODELS = [m.strip() for m in _LIVE_MODELS_ENV.split(",") if m.strip()]
+
+# Unwanted conversational sign-offs / robotic filler patterns
+_SNAG_PATTERNS = [
+    re.compile(r"(?i)\b(?:let\s+me|lemme|leme|just\s+let\s+me)\s+know\s+if\s+.*?\bsnags?\b[^.!?\n]*[.!?,]*"),
+    re.compile(r"(?i)\b(?:feel\s+free\s+to\s+reach\s+out|reach\s+out|ping\s+me)\s+if\s+.*?\bsnags?\b[^.!?\n]*[.!?,]*"),
+    re.compile(r"(?i)\bif\s+.*?\bsnags?\b.*?(?:let\s+me\s+know|lemme\s+know|leme\s+know|feel\s+free)[^.!?\n]*[.!?,]*"),
+    re.compile(r"(?i)\b(?:let\s+me\s+know|lmk|lemme\s+know|leme\s+know)\s+if\s+you\s+need\s+anything\s+else[.!?,]*"),
+    re.compile(r"(?i)\bhope\s+this\s+helps[.!?,]*"),
+]
+
+
+def strip_conversational_cliches(text: str) -> str:
+    """Remove repetitive robotic sign-offs, specifically snag-related cliches."""
+    if not text:
+        return text
+    cleaned = text
+    for pat in _SNAG_PATTERNS:
+        cleaned = pat.sub("", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
+
+# Prebuilt voice persona (Aoede: warm, gentle, intelligent female voice; Kore, Puck, Fenrir, Charon)
+LIVE_VOICE_NAME = os.getenv("LIVE_VOICE_NAME", "Aoede").strip()
 
 # The Live API consumes raw 16 kHz mono PCM16 — its *native* input rate.
 # (24 kHz worked too, but 16k is the documented default and avoids a resample.)
@@ -80,6 +113,71 @@ _LIVE_TIMEOUT_S = 30.0
 
 # Completed Live responses are streamed back to the client in fixed chunks.
 LIVE_RESPONSE_CHUNK = 16384
+
+_PCM_CACHE: dict[str, bytes] = {}
+
+
+def get_ack_audio_pcm(tag: str) -> bytes:
+    """Return cached 24kHz mono PCM16 audio bytes for the given acknowledgment tag."""
+    if tag in _PCM_CACHE:
+        return _PCM_CACHE[tag]
+    from pathlib import Path
+    for base in [Path("static/voice_cache"), Path("data/voice_cache"), Path("/app/static/voice_cache"), Path("/app/data/voice_cache")]:
+        p = base / f"ack_{tag}.pcm"
+        if p.is_file():
+            try:
+                b = p.read_bytes()
+                if b:
+                    _PCM_CACHE[tag] = b
+                    return b
+            except Exception:
+                pass
+    if tag != "general":
+        return get_ack_audio_pcm("general")
+    return b""
+
+
+def classify_ack(calls: list[dict] | dict) -> tuple[str, str]:
+    """Classify tool calls into a cached voice acknowledgment tag and human spoken text."""
+    if isinstance(calls, dict):
+        calls = [calls]
+    if not calls:
+        return "general", "I'm on it. Working on that right away."
+
+    for fc in calls:
+        name = fc.get("name", "")
+        args = fc.get("args") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except Exception:
+                args = {}
+
+        if name == "delegate_task":
+            dept = str(args.get("department", "specialist")).strip().lower()
+            if dept in ("research", "coding", "creative", "communication", "operations", "productivity", "hr", "utility"):
+                return dept, f"I'm on it. Delegating to {dept} right away."
+            return "general", f"I'm on it. Delegating to {dept} right away."
+        elif name == "delegate_pipeline":
+            return "pipeline", "I'm on it. Starting the specialist pipeline now."
+        elif name == "delegate_parallel":
+            return "parallel", "I'm on it. Coordinating the specialist teams now."
+        elif name == "agent_submit":
+            return "worker", "I'm on it. Submitting to the coding worker now."
+        elif name == "deep_research":
+            return "deep_research", "I'm on it. Starting deep research now."
+        elif name == "generate_presentation":
+            return "presentation", "I'm on it. Generating your presentation slides now."
+        elif name in ("email_send", "mail_send"):
+            return "email", "I'm on it. Sending that email now."
+        elif name.startswith("ha_"):
+            return "smart_home", "I'm on it. Updating your smart home devices right away."
+        elif name in ("docker_start", "docker_stop", "docker_restart", "docker_list"):
+            return "operations", "I'm on it. Delegating to operations right away."
+        elif name in ("apply_patch", "apply_patch_transaction", "lint_code", "run_tests"):
+            return "coding", "I'm on it. Delegating to coding right away."
+
+    return "general", "I'm on it. Working on that right away."
 
 
 def available() -> bool:
@@ -102,6 +200,7 @@ async def live_speak(text: str, system_instruction: str = "") -> LiveTurn:
     if not available():
         return LiveTurn(error="Live voice disabled")
     text = (text or "").strip()
+    text = strip_conversational_cliches(text)
     if not text:
         return LiveTurn(error="No text to speak")
 
@@ -192,21 +291,43 @@ def _first_msg(model: str, system_instruction: str = "") -> dict:
     """The required first WebSocket message (BidiGenerateContentSetup).
 
     Includes Zenith's full tool catalog so the model can call tools mid-
-    conversation (the frontend shows them, and _handle_tool_calls executes them).
+    conversation with asynchronous NON_BLOCKING tool execution and extended thinking.
     """
+    gen_config: dict = {"responseModalities": _RESPONSE_MODALITIES}
+    if "thinking" in model or "extended" in model:
+        gen_config["thinkingConfig"] = {"thinkingLevel": "HIGH"}
+
+    if LIVE_VOICE_NAME:
+        gen_config["speechConfig"] = {
+            "voiceConfig": {
+                "prebuiltVoiceConfig": {
+                    "voiceName": LIVE_VOICE_NAME
+                }
+            }
+        }
+
     setup = {
         "model": f"models/{model}",
-        "generationConfig": {"responseModalities": _RESPONSE_MODALITIES},
+        "generationConfig": gen_config,
     }
-    if system_instruction and system_instruction.strip():
-        setup["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+    voice_guidance = (
+        "\n\n[Spoken Voice & Execution Directives:\n"
+        "- NEVER say 'let me know if there are any snags', 'let me know if you run into any snags', or similar repetitive conversational sign-offs. That phrase is strictly forbidden.\n"
+        "- It is completely fine and natural to be quiet for a moment while thinking, reasoning, or waiting for a tool to execute. Do NOT invent vocal filler to avoid quiet moments.\n"
+        "- When calling asynchronous non-blocking tools, you can naturally continue speaking to the user while the tool executes in the background.\n"
+        "- When finished, state what was accomplished succinctly and conclude naturally.]"
+    )
+    full_instruction = (system_instruction + voice_guidance).strip() if system_instruction else voice_guidance.strip()
+    setup["systemInstruction"] = {"parts": [{"text": full_instruction}]}
+
     # Attach Zenith's tool schemas so the Live model can use them — sanitized so
     # arrays/objects without child schemas don't 1007 the whole setup.
     try:
         from ..core.tools import catalog
         tool_specs = catalog()
         if tool_specs:
-            clean = _sanitize_tools(tool_specs)
+            is_non_blocking = ("extended" in model or "3.8" in model)
+            clean = _sanitize_tools(tool_specs, non_blocking=is_non_blocking)
             if clean:
                 setup["tools"] = [
                     {"functionDeclarations": [t["function"] for t in clean if t.get("function")]}
@@ -281,7 +402,7 @@ def pcm24k_to_16k(data: bytes) -> bytes:
     return out.tobytes()
 
 
-def pcm_to_wav(pcm: bytes, rate: int = 16000) -> bytes:
+def pcm_to_wav(pcm: bytes, rate: int = LIVE_OUTPUT_RATE) -> bytes:
     """Wrap 16-bit PCM mono in a minimal RIFF/WAVE file (.wav is lossless and
     universally playable by ``new Audio()`` / HTMLAudioElement — raw ``audio/pcm``
     is not)."""
@@ -299,30 +420,26 @@ def pcm_to_wav(pcm: bytes, rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 
-# The output PCM (resampled to the input 16k) rides to the browser inside a .wav
-# so HTML `<audio>` can decode it; the bytes are still plain PCM16 inside, which
-# is what playLivePcm reads.
+# The output PCM rides to the browser inside a .wav so HTML `<audio>` can decode
+# it; the bytes are lossless 24 kHz PCM16 inside.
 OUTPUT_MIME = "audio/wav"
 
 
 def _normalize_output_audio(turn: "LiveTurn") -> None:
-    """Resample a turn's Live output to the 16k PCM the rest of Zenith expects,
-    and wrap it in a playable WAV container.
+    """Wrap a turn's native 24 kHz Live output in a playable WAV container.
 
     Call after ``turn.ok`` is set. 24k raw PCM16 (``audio/pcm;rate=24000``) is
-    what Gemini streams; the streaming tunnel and the two `<audio>`-based paths
-    all consume the normalized 16k bytes here.
+    what Gemini streams; we wrap it directly in a standard RIFF/WAVE header
+    without lossy decimation so the browser decodes full-fidelity native audio.
     """
     if not turn.audio:
         return
-    # Only resample raw PCM — a webm/opus container (some models/modes) passes
+    # Only wrap raw PCM — a webm/opus container (some models/modes) passes
     # straight through untouched; the browser decodes it natively.
-    if "pcm" in turn.audio_mime.lower():
-        turn.audio = pcm24k_to_16k(turn.audio)
+    mime = (turn.audio_mime or "").lower()
+    if not mime or "pcm" in mime:
+        turn.audio = pcm_to_wav(turn.audio, rate=LIVE_OUTPUT_RATE)
         turn.audio_mime = OUTPUT_MIME
-        # Wrap the resampled PCM in a .wav so new Audio()/HTMLAudioElement can
-        # decode it (raw audio/pcm is not a browser-decodable format).
-        turn.audio = pcm_to_wav(turn.audio)
 
 
 _LAST_KEY: str = ""
@@ -453,6 +570,7 @@ async def _run_model(model: str, audio_bytes: bytes, fmt: str, key: str,
         # written back on the same socket while the model keeps speaking.
         turn.audio = b""
         completed = False
+        tool_called = False
         error = ""
         started = asyncio.get_event_loop().time()
         async for raw in ws:
@@ -468,13 +586,32 @@ async def _run_model(model: str, audio_bytes: bytes, fmt: str, key: str,
                         turn.audio += base64.b64decode(inline["data"])
                         if inline.get("mimeType"):
                             turn.audio_mime = inline["mimeType"]
+                interaction_status = (
+                    content.get("interactionStatus") or
+                    content.get("interaction_status") or
+                    msg.get("interactionStatus") or
+                    msg.get("interaction_status") or
+                    ""
+                )
                 if content.get("turnComplete") or content.get("generationComplete"):
+                    if interaction_status == "IN_PROGRESS":
+                        continue
+                    if tool_called and not turn.audio and (asyncio.get_event_loop().time() - started < LIVE_MAX_RESPONSE_SECONDS):
+                        # Intermediate turnComplete closing the tool-call request;
+                        # continue reading to collect the model's post-tool spoken reply.
+                        continue
                     completed = True
                     break
             if msg.get("toolCall"):
-                # Zenith's tool layer: execute the called functions and send the
-                # response back so the model can finish its turn (with audio).
-                await _handle_tool_calls(ws, msg["toolCall"])
+                tool_called = True
+                if not turn.audio:
+                    ack_tag, _ = classify_ack(msg["toolCall"].get("functionCalls", []))
+                    ack_pcm = get_ack_audio_pcm(ack_tag)
+                    if ack_pcm:
+                        turn.audio += ack_pcm
+                # Zenith's tool layer: execute the called functions concurrently and send
+                # the batched response back so the model can finish its turn (with audio).
+                await _handle_tool_calls(ws, msg["toolCall"], model=model)
             if msg.get("error"):
                 error = str(msg.get("error"))
             if asyncio.get_event_loop().time() - started > LIVE_MAX_RESPONSE_SECONDS:
@@ -495,11 +632,13 @@ async def _run_model(model: str, audio_bytes: bytes, fmt: str, key: str,
     return turn
 
 
-async def _handle_tool_calls(ws, tool_call: dict) -> None:
-    """Run Zenith's tool handlers for each functionCall and reply on the socket."""
+async def _handle_tool_calls(ws, tool_call: dict, model: str = "") -> None:
+    """Run Zenith's tool handlers for functionCalls concurrently and reply on the socket."""
     calls = tool_call.get("functionCalls", []) or []
-    responses = []
-    for c in calls:
+    if not calls:
+        return
+
+    async def _exec_single(c: dict) -> dict:
         name = c.get("name", "")
         args = c.get("args") or {}
         cid = c.get("id", "")
@@ -509,9 +648,16 @@ async def _handle_tool_calls(ws, tool_call: dict) -> None:
             result = res.get("result", res.get("error", ""))
         except Exception as exc:
             result = f"error: {exc}"
-        responses.append({"id": cid, "response": {"result": str(result)}})
+        return {"id": cid, "name": name, "response": {"result": str(result)}}
+
+    responses = await asyncio.gather(*[_exec_single(c) for c in calls])
     if responses:
-        await ws.send(json.dumps({"toolResponse": {"functionResponses": responses}}))
+        await ws.send(json.dumps({"toolResponse": {"functionResponses": list(responses)}}))
+        if "3.8" in model:
+            try:
+                await ws.send(json.dumps({"clientContent": {"turnComplete": True}}))
+            except Exception:
+                pass
 
 
 # ── config helpers (defaults match the module-level constants above) ─────────
@@ -541,6 +687,11 @@ def _sanitize_schema(node) -> None:
             node["items"] = {"type": "string"}  # default to string items
         elif t == "object" and "properties" not in node:
             node["properties"] = {}
+    # Sanitize enum arrays to prevent Live API 1007 errors on empty strings
+    if "enum" in node and isinstance(node["enum"], list):
+        node["enum"] = [x for x in node["enum"] if isinstance(x, str) and x.strip()]
+        if not node["enum"]:
+            del node["enum"]
     # recurse
     for v in node.get("properties", {}).values():
         _sanitize_schema(v)
@@ -553,7 +704,7 @@ def _sanitize_schema(node) -> None:
             _sanitize_schema(sub)
 
 
-def _sanitize_tools(tool_specs: list[dict]) -> list[dict]:
+def _sanitize_tools(tool_specs: list[dict], non_blocking: bool = False) -> list[dict]:
     out = []
     for t in tool_specs:
         fn = t.get("function") or {}
@@ -562,7 +713,11 @@ def _sanitize_tools(tool_specs: list[dict]) -> list[dict]:
             _sanitize_schema(params)
         except Exception:
             continue  # drop a tool that can't be sanitized
-        out.append({"type": "function", "function": fn})
+        decl = dict(fn)
+        decl["parameters"] = params
+        if non_blocking:
+            decl["behavior"] = "NON_BLOCKING"
+        out.append({"type": "function", "function": decl})
     return out
 
 
@@ -582,6 +737,10 @@ class LiveSession:
         self.system_instruction = system_instruction
         self._send_lock = asyncio.Lock()
         self._closed = False
+        self._pending_tools = 0
+        self._awaiting_tool_reply = False
+        self._awaiting_tool_turn_at = 0.0
+        self._model_spoke_this_turn = False
 
     async def open(self) -> str:
         """Connect + setup one Live WS. Returns an error string, or "" on success."""
@@ -607,6 +766,7 @@ class LiveSession:
                         break
                 self.ws = ws
                 self.model = model
+                log.info("Live session active: model=%s key=…%s", model, key[-6:] if len(key) > 6 else "?")
                 return ""
             except Exception as exc:
                 log.warning("Live session open failed model=%s key=…%s: %s", model,
@@ -620,6 +780,7 @@ class LiveSession:
 
     async def push_audio(self, pcm: bytes) -> None:
         """Stream raw PCM16 (16 kHz) into the model."""
+        self._model_spoke_this_turn = False
         if not self.ws or not pcm:
             return
         chunks = _audio_chunks(pcm)
@@ -640,10 +801,16 @@ class LiveSession:
             except Exception:
                 pass
 
+    async def interrupt(self) -> None:
+        """Handle client barge in signal: reset pending state."""
+        self._pending_tools = 0
+        self._awaiting_tool_reply = False
+        self._model_spoke_this_turn = False
+
     async def events(self):
         """Yield (kind, payload) tuples from the model, driving the conversation.
-        Kinds: "audio" (bytes), "text" (model transcription), "tool" (called tool),
-        "done" (turnComplete), "error"."""
+        Kinds: "audio" (bytes), "text" (model transcription), "heard" (user transcription),
+        "tool" (called tool), "interrupted" (barge-in cutoff), "done" (turnComplete), "error"."""
         if not self.ws:
             yield ("error", "no session")
             return
@@ -664,73 +831,128 @@ class LiveSession:
                 continue
             sc = msg.get("serverContent")
             if sc:
+                # Handle model-side barge-in detection (user started speaking over model audio)
+                if sc.get("interrupted"):
+                    yield ("interrupted", None)
+                    continue
+
                 mt = sc.get("modelTurn") or {}
                 for part in mt.get("parts", []) or []:
                     inline = part.get("inlineData") or {}
                     if inline.get("data"):
-                        # The model speaks at 24 kHz. The browser's playLivePcm
-                        # decodes via the AudioContext device rate (typically 48k)
-                        # — raw 24k read as 48k plays ~2× too fast. Resample to
-                        # 16k here so every client decodes at the correct speed.
-                        # (This model always returns audio/pcm; default to the
-                        # resample when the mime is absent — safer than passing
-                        # raw 24k through to a 16k-declaring client.)
+                        self._model_spoke_this_turn = True
+                        self._awaiting_tool_reply = False
+                        # The model speaks at native 24 kHz mono PCM16.
+                        # We stream the pristine 24 kHz PCM frames directly
+                        # to the client WebSocket, where WebAudio decodes it natively.
                         audio = base64.b64decode(inline["data"])
-                        mime = (inline.get("mimeType") or "").lower()
-                        if not mime or "pcm" in mime:
-                            audio = pcm24k_to_16k(audio)
                         yield ("audio", audio)
                 # streaming text transcription of the model's speech
                 if sc.get("outputTranscription") and sc["outputTranscription"].get("text"):
-                    yield ("text", sc["outputTranscription"]["text"])
+                    self._model_spoke_this_turn = True
+                    self._awaiting_tool_reply = False
+                    clean_t = strip_conversational_cliches(sc["outputTranscription"]["text"])
+                    if clean_t:
+                        yield ("text", clean_t)
                 if sc.get("inputTranscription") and sc["inputTranscription"].get("text"):
                     yield ("heard", sc["inputTranscription"]["text"])
+
+                interaction_status = (
+                    sc.get("interactionStatus") or
+                    sc.get("interaction_status") or
+                    msg.get("interactionStatus") or
+                    msg.get("interaction_status") or
+                    ""
+                )
                 if sc.get("turnComplete") or sc.get("generationComplete"):
+                    if interaction_status == "IN_PROGRESS":
+                        # Model is performing background reasoning or running async tools
+                        continue
+                    if self._pending_tools > 0:
+                        # Asynchronous tool execution in progress
+                        continue
+                    if self._awaiting_tool_reply:
+                        # Waiting for model to deliver post-tool spoken synthesis
+                        if asyncio.get_event_loop().time() - self._awaiting_tool_turn_at < 15.0:
+                            continue
+                        self._awaiting_tool_reply = False
                     yield ("done", None)
                     # Multi-turn: the SAME Live session persists across turns. Do
                     # NOT return/break the generator — keep reading so the next
                     # utterance on this WebSocket (push_audio + end_turn) produces
-                    # the next reply over the same connection. The recv timeout
-                    # below just `continue`s while the user is between turns.
+                    # the next reply over the same connection.
                     continue
             tc = msg.get("toolCall")
             if tc and tc.get("functionCalls"):
                 calls = tc["functionCalls"]
+                self._pending_tools += len(calls)
+                self._awaiting_tool_reply = True
+                self._awaiting_tool_turn_at = asyncio.get_event_loop().time()
+
+                # Asynchronous NON_BLOCKING tool calling:
+                # If model hasn't already spoken before calling tools, emit acknowledgment
+                # so the user immediately hears/sees "I'm on it..."
+                if not self._model_spoke_this_turn:
+                    ack_tag, ack_text = classify_ack(calls)
+                    ack_pcm = get_ack_audio_pcm(ack_tag)
+                    if ack_text:
+                        yield ("text", ack_text)
+                    if ack_pcm:
+                        chunk_size = 4800  # 100ms at 24kHz mono PCM16
+                        for offset in range(0, len(ack_pcm), chunk_size):
+                            yield ("audio", ack_pcm[offset:offset + chunk_size])
+                            await asyncio.sleep(0.005)
+                    self._model_spoke_this_turn = True
+
                 for fc in calls:
                     yield ("tool", fc)
-                # Execute EVERY call in the message (the model can batch several)
-                # and send the responses back automatically — missing one would
-                # leave the model waiting on a result that never arrives.
-                for fc in calls:
-                    await self._handle_tool_calls(fc)
+                # Asynchronously execute tool calls in the background so events()
+                # generator is NOT blocked, allowing the model to keep talking in real time!
+                asyncio.create_task(self._handle_tool_calls(calls))
             if msg.get("error"):
                 yield ("error", str(msg.get("error")))
 
-    async def _handle_tool_calls(self, fc: dict) -> None:
+    async def _handle_tool_calls(self, calls: list[dict] | dict) -> None:
+        """Execute functionCalls concurrently and send back the complete toolResponse."""
+        if isinstance(calls, dict):
+            calls = [calls]
+        if not calls:
+            return
         from ..core.tools import call_tool
 
-        name = fc.get("name", "")
-        args = fc.get("args") or {}
-        cid = fc.get("id", "")
-        try:
-            # Timebox tool execution: a hung tool (shell, browser, a slow
-            # network call) must NOT freeze the conversation/mic. 45s is the
-            # max the model waits on any single tool before it should move on.
-            res = await asyncio.wait_for(
-                call_tool(name, args if isinstance(args, dict) else {}),
-                timeout=45.0,
-            )
-            result = res.get("result", res.get("error", ""))
-        except asyncio.TimeoutError:
-            result = "error: tool timed out after 45s"
-        except Exception as exc:
-            result = f"error: {exc}"
-        async with self._send_lock:
+        async def _exec_single(fc: dict) -> dict:
+            name = fc.get("name", "")
+            args = fc.get("args") or {}
+            cid = fc.get("id", "")
             try:
-                await self.ws.send(json.dumps({"toolResponse": {"functionResponses": [
-                    {"id": cid, "response": {"result": str(result)}}]}}))
-            except Exception:
-                pass
+                # Timebox tool execution: a hung tool (shell, browser, a slow
+                # network call) must NOT freeze the conversation/mic. 45s is the
+                # max the model waits on any single tool before it should move on.
+                res = await asyncio.wait_for(
+                    call_tool(name, args if isinstance(args, dict) else {}),
+                    timeout=45.0,
+                )
+                result = res.get("result", res.get("error", ""))
+            except asyncio.TimeoutError:
+                result = "error: tool timed out after 45s"
+            except Exception as exc:
+                result = f"error: {exc}"
+            return {"id": cid, "name": name, "response": {"result": str(result)}}
+
+        try:
+            responses = await asyncio.gather(*[_exec_single(fc) for fc in calls])
+            async with self._send_lock:
+                if self.ws and not self._closed:
+                    await self.ws.send(json.dumps({"toolResponse": {"functionResponses": list(responses)}}))
+                    if "3.8" in self.model:
+                        try:
+                            await self.ws.send(json.dumps({"clientContent": {"turnComplete": True}}))
+                        except Exception:
+                            pass
+        except Exception as exc:
+            log.warning("Tool handling error in LiveSession: %s", exc)
+        finally:
+            self._pending_tools = max(0, self._pending_tools - len(calls))
 
     async def close(self) -> None:
         self._closed = True

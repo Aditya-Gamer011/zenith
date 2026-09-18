@@ -1,0 +1,37 @@
+.browser-mockup {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #2a2e37);
+  background: var(--bg-color, #0d0f12);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+}
+.browser-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--card-bg, #181b20);
+  border-bottom: 1px solid var(--border-color, #2a2e37);
+}
+.browser-dots {
+  display: flex;
+  gap: 8px;
+}
+.browser-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.browser-dot.red { background: #ff5f56; }
+.browser-dot.yellow { background: #ffbd2e; }
+.browser-dot.green { background: #27c93f; }
+.browser-url-pill {
+  margin: 0 auto;
+  padding: 4px 20px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color, #2a2e37);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--muted-color, #8e95a2);
+}

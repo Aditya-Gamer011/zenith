@@ -1,0 +1,27 @@
+{
+  "id": "timeline-node",
+  "name": "Roadmap Timeline Node",
+  "type": "component",
+  "tags": [
+    "timeline",
+    "milestone",
+    "node",
+    "phase",
+    "quarter"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "timeline",
+    "roadmap",
+    "milestones"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic"
+  ],
+  "description": "Connected chronological milestone node with active status badge, title, and milestone date.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

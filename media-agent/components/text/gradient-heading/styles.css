@@ -1,0 +1,15 @@
+.gradient-heading {
+  font-family: var(--font-heading, sans-serif);
+  font-size: clamp(2.5rem, 6vw, 4.2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-color, #ffffff) 0%, var(--accent-1, #38bdf8) 50%, var(--accent-2, #818cf8) 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-heading-shift 6s ease infinite alternate;
+}
+@keyframes gradient-heading-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}

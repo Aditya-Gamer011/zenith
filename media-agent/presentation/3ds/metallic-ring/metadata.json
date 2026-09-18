@@ -1,0 +1,26 @@
+{
+  "id": "metallic-ring",
+  "name": "Torus Metallic Ring",
+  "type": "3d",
+  "tags": [
+    "3d",
+    "torus",
+    "ring",
+    "metallic",
+    "orbit"
+  ],
+  "visualIntensity": 5,
+  "bestFor": [
+    "cinematic-hero",
+    "statement",
+    "closing"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "Floating precision metallic torus ring representing infinity or cyclical loops.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

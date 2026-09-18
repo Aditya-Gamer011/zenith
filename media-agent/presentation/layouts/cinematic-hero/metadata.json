@@ -1,0 +1,37 @@
+{
+  "id": "cinematic-hero",
+  "name": "Cinematic Hero Layout",
+  "type": "layout",
+  "tags": [
+    "cinematic",
+    "futuristic",
+    "hero",
+    "opening",
+    "3d",
+    "light-beam"
+  ],
+  "visualIntensity": 5,
+  "bestFor": [
+    "opening",
+    "section-divider",
+    "closing",
+    "keynote"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "High-contrast opening hero featuring kinetic typography, 3D floating object, dramatic directional light beam, and particle depth.",
+  "components": [
+    "kinetic-title",
+    "3d-hero-object",
+    "light-beam",
+    "eyebrow-pill"
+  ],
+  "motion": [
+    "stagger-reveal",
+    "slow-zoom",
+    "morph"
+  ],
+  "default_props": {}
+}

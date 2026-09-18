@@ -1,0 +1,24 @@
+{
+  "id": "zoom",
+  "name": "Dramatic Cinematic Zoom",
+  "type": "animation",
+  "tags": [
+    "animation",
+    "zoom",
+    "scale",
+    "hero"
+  ],
+  "visualIntensity": 5,
+  "bestFor": [
+    "cinematic-hero",
+    "closing"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "experimental-creative"
+  ],
+  "description": "Impactful forward lens punch zoom introducing pivotal thesis statements.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

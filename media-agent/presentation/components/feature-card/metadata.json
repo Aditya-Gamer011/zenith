@@ -1,0 +1,27 @@
+{
+  "id": "feature-card",
+  "name": "Structured Feature Card",
+  "type": "component",
+  "tags": [
+    "feature",
+    "card",
+    "pillar",
+    "bullets",
+    "structured"
+  ],
+  "visualIntensity": 2,
+  "bestFor": [
+    "bento",
+    "cards-grid",
+    "overview"
+  ],
+  "compatibleStyles": [
+    "minimal-premium",
+    "premium-editorial",
+    "playful-youthful"
+  ],
+  "description": "Clean card with bold title header, subtitle, and concise high-signal bullet takeaways.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

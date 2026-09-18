@@ -1,0 +1,24 @@
+{
+  "id": "perspective-grid",
+  "name": "3D Perspective Horizon Grid",
+  "type": "effect",
+  "tags": [
+    "grid",
+    "perspective",
+    "horizon",
+    "retro",
+    "synth"
+  ],
+  "visualIntensity": 4,
+  "bestFor": [
+    "cinematic-hero",
+    "closing"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic"
+  ],
+  "description": "Floor plane receding wireframe grid conveying vast technological horizon.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

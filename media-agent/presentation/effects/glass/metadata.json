@@ -1,0 +1,24 @@
+{
+  "id": "glass",
+  "name": "Refractive Glass Shader",
+  "type": "effect",
+  "tags": [
+    "glass",
+    "frosted",
+    "refraction",
+    "blur"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "bento",
+    "cards-grid"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial"
+  ],
+  "description": "Backdrop-blur glass effect simulating physically frosted crystal or acrylic.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

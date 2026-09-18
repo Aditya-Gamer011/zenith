@@ -1,0 +1,36 @@
+{
+  "id": "data-story",
+  "name": "Data Story & Metric Layout",
+  "type": "layout",
+  "tags": [
+    "data",
+    "metrics",
+    "kpi",
+    "chart",
+    "statistics",
+    "growth"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "kpis",
+    "financials",
+    "growth",
+    "performance"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Pairing giant metric counters and embedded visualizations with concise analytical takeaway punchlines.",
+  "components": [
+    "giant-stat",
+    "chart-container",
+    "takeaway-pill"
+  ],
+  "motion": [
+    "fade",
+    "slide-up"
+  ],
+  "default_props": {}
+}

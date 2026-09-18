@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automated Test Landing — Zenith Creative Director</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <!-- Three.js for 3D Floating Geometry -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- GSAP for Smooth Parallax & Stagger Timeline -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #09111E;
+      --card-bg: #132034;
+      --card-glass: rgba(19, 32, 52, 0.8);
+      --border-color: #1E3452;
+      --text-color: #F8FAFC;
+      --muted-color: #8BA0BA;
+      --accent-1: #38BDF8;
+      --accent-2: #818CF8;
+      --glow-color: rgba(56, 189, 248, 0.18);
+      --font-heading: 'Inter', -apple-system, sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: var(--font-body);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Sticky Modern Glass Navbar ─────────────────────────────────── */
+    .glass-nav {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 40px);
+      max-width: 1200px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-radius: 9999px;
+      background: var(--card-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-heading);
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--text-color);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-1);
+      box-shadow: 0 0 12px var(--accent-1);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted-color);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-color);
+    }
+
+    .nav-action {
+      padding: 8px 18px;
+      border-radius: 9999px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .nav-action:hover {
+      border-color: var(--accent-1);
+      box-shadow: 0 0 15px var(--glow-color);
+    }
+
+    /* ── Section Container & Typography ────────────────────────────── */
+    .section-wrap {
+      position: relative;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 120px 24px 60px;
+    }
+
+    .section-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--accent-1);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(212, 163, 115, 0.08);
+      border: 1px solid var(--border-color);
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-family: var(--font-heading);
+      font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+
+    .section-desc {
+      font-size: 1.15rem;
+      color: var(--muted-color);
+      max-width: 680px;
+      line-height: 1.7;
+      margin-bottom: 40px;
+    }
+
+    /* ── Hero Section with Background Layers ───────────────────────── */
+    .hero-container {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow: hidden;
+      padding-top: 100px;
+    }
+
+    .hero-split {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 40px;
+      align-items: center;
+      z-index: 2;
+    }
+
+    @media (max-width: 960px) {
+      .hero-split {
+        grid-template-columns: 1fr;
+      }
+      .nav-links { display: none; }
+    }
+
+    /* ── Canvas Particle Background ────────────────────────────────── */
+    #particle-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.4;
+    }
+
+    /* ── 3D Viewport ───────────────────────────────────────────────── */
+    #three-viewport {
+      width: 100%;
+      height: 440px;
+      position: relative;
+      z-index: 3;
+    }
+
+    /* ── Features Bento Grid ───────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 28px;
+      margin-top: 40px;
+    }
+
+    /* ── Product Showcase Showcase ─────────────────────────────────── */
+    .product-showcase-box {
+      position: relative;
+      margin-top: 50px;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    /* ── Footer Mesh Gradient ──────────────────────────────────────── */
+    .site-footer {
+      position: relative;
+      padding: 100px 24px 60px;
+      text-align: center;
+      border-top: 1px solid var(--border-color);
+      margin-top: 80px;
+      overflow: hidden;
+    }
+
+    .footer-mesh {
+      position: absolute;
+      inset: -40%;
+      background: radial-gradient(circle at 50% 100%, var(--glow-color) 0%, transparent 60%);
+      filter: blur(70px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Injected Adapted Components CSS ───────────────────────────── */
+    .aurora-bg-container {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--bg-color, var(--bg-color));
+  overflow: hidden;
+}
+.aurora-waves {
+  position: absolute;
+  inset: -50%;
+  background: radial-gradient(circle at 30% 20%, var(--accent-1, #d4a373) 0%, transparent 40%),
+              radial-gradient(circle at 70% 60%, var(--accent-2, var(--accent-1)) 0%, transparent 45%),
+              radial-gradient(circle at 50% 80%, rgba(212, 163, 115, 0.4) 0%, transparent 35%);
+  filter: blur(80px);
+  opacity: 0.35;
+  animation: aurora-flow 18s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes aurora-flow {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate(6%, -4%) scale(1.1) rotate(6deg); }
+  100% { transform: translate(-5%, 5%) scale(0.95) rotate(-4deg); }
+}
+
+    .magnetic-neon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 32px;
+  font-family: var(--font-heading, inherit);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-color, var(--text-color));
+  background: linear-gradient(135deg, rgba(20, 25, 35, 0.95), rgba(10, 15, 22, 0.98));
+  border: 1px solid var(--accent-1, var(--accent-1));
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+  box-shadow: 0 0 18px var(--glow-color, rgba(0, 243, 255, 0.2));
+}
+
+.magnetic-neon-btn:hover {
+  box-shadow: 0 0 35px var(--glow-color, rgba(0, 243, 255, 0.5)), inset 0 0 15px var(--glow-color, rgba(0, 243, 255, 0.3));
+  border-color: var(--accent-1, var(--accent-1));
+}
+
+.magnetic-neon-btn:active {
+  transform: scale(0.96);
+}
+
+    .glass-card {
+  position: relative;
+  padding: 32px;
+  border-radius: 20px;
+  background: var(--card-glass, rgba(24, 27, 32, 0.78));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.glass-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--accent-1, rgba(212, 163, 115, 0.4));
+  box-shadow: 0 28px 60px -12px rgba(0, 0, 0, 0.65), 0 0 25px var(--glow-color, rgba(212, 163, 115, 0.15));
+}
+
+    .card-3d-wrap {
+  perspective: 1200px;
+}
+.card-3d-inner {
+  padding: 36px;
+  border-radius: 20px;
+  background: var(--card-bg, var(--card-bg));
+  border: 1px solid var(--border-color, var(--border-color));
+  transform-style: preserve-3d;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+.card-3d-inner:hover {
+  border-color: var(--accent-1, var(--accent-1));
+  box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 30px var(--glow-color, rgba(59,130,246,0.2));
+}
+.card-3d-layer-high {
+  transform: translateZ(45px);
+}
+.card-3d-layer-mid {
+  transform: translateZ(25px);
+}
+
+    .browser-mockup {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, var(--border-color));
+  background: var(--bg-color, var(--bg-color));
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+}
+.browser-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--card-bg, var(--card-bg));
+  border-bottom: 1px solid var(--border-color, var(--border-color));
+}
+.browser-dots {
+  display: flex;
+  gap: 8px;
+}
+.browser-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.browser-dot.red { background: #ff5f56; }
+.browser-dot.yellow { background: #ffbd2e; }
+.browser-dot.green { background: #27c93f; }
+.browser-url-pill {
+  margin: 0 auto;
+  padding: 4px 20px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color, var(--border-color));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--muted-color, var(--muted-color));
+}
+
+    .spotlight-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--card-bg, var(--card-bg));
+  border: 1px solid var(--border-color, var(--border-color));
+}
+.spotlight-panel::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--glow-color, rgba(59, 130, 246, 0.18)), transparent 60%);
+  opacity: var(--spotlight-opacity, 0);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.spotlight-panel:hover {
+  --spotlight-opacity: 1;
+}
+
+    .custom-cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-1, var(--accent-1));
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+}
+.custom-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--glow-color, rgba(0, 243, 255, 0.4));
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s, height 0.2s, border-color 0.2s;
+}
+
+  </style>
+</head>
+<body>
+
+  <!-- Smooth Magnetic Cursor Tracker -->
+  <div class="custom-cursor-dot" id="cursor-dot"></div>
+  <div class="custom-cursor-ring" id="cursor-ring"></div>
+
+  <!-- Glass Floating Navigation -->
+  <nav class="glass-nav">
+    <a href="#" class="nav-brand">
+      <div class="nav-brand-dot"></div>
+      <span>Zenith Studio</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#product">Showcase</a></li>
+      <li><a href="#registry">Components</a></li>
+    </ul>
+    <a href="#cta" class="nav-action">Get Access &rarr;</a>
+  </nav>
+
+  <!-- ── 1. HERO SECTION ─────────────────────────────────────────────── -->
+  <section class="hero-container">
+    <!-- Aurora background wave -->
+    <div class="aurora-waves"></div>
+    <!-- Interactive Particle Constellation -->
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="section-wrap hero-split">
+      <div>
+        <div class="section-tag">Autonomous Media & Design Architecture</div>
+        <h1 class="section-title">
+          Visual Intelligence.<br>
+          <span style="color: var(--accent-1);">Automated Test Landing</span>
+        </h1>
+        <p class="section-desc">
+          Test brief
+        </p>
+        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;" id="cta">
+          <!-- Adapted Magnetic Neon CTA Button -->
+          <button class="magnetic-neon-btn" data-magnetic="true">
+            <span>Launch Sovereign Environment &rarr;</span>
+          </button>
+          <a href="#features" class="nav-action" style="padding: 14px 28px; border-radius: 12px;">
+            Explore Primitives
+          </a>
+        </div>
+      </div>
+
+      <!-- 3D Interactive WebGL Floating Object -->
+      <div>
+        <div class="glass-card" style="padding: 16px;">
+          <div id="three-viewport"></div>
+          <div style="padding: 16px; text-align: center;">
+            <div style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent-1);">
+              [WebGL R3F Geometry Active &bull; Interactive Orbit]
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2. FEATURES & BENTO GRID SECTION ───────────────────────────── -->
+  <section class="section-wrap" id="features">
+    <div style="text-align: center; max-width: 720px; margin: 0 auto 60px;">
+      <div class="section-tag">Visual Vocabulary Engine</div>
+      <h2 class="section-title">Engineered Visual Components</h2>
+      <p class="section-desc" style="margin: 0 auto;">
+        Every component is cataloged with motion intensity, framework targets, and brand-adapted semantic tokens.
+      </p>
+    </div>
+
+    <div class="features-grid">
+      <!-- 3D Tilt Card 1 -->
+      <div class="card-3d-wrap spotlight-panel" data-tilt="true">
+        <div class="card-3d-inner" style="height: 100%;">
+          <div class="card-3d-layer-high">
+            <span class="section-tag" style="margin-bottom: 12px;">Aceternity Primitive</span>
+            <h3 style="font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; color: var(--text-color);">
+              3D Card Perspective
+            </h3>
+          </div>
+          <div class="card-3d-layer-mid">
+            <p style="color: var(--muted-color); font-size: 0.95rem; line-height: 1.6;">
+              Real-time cursor inclination tracking with multi-layered translation along the Z-axis for physical depth realism.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Glass Card 2 -->
+      <div class="glass-card spotlight-panel">
+        <span class="section-tag" style="margin-bottom: 12px;">Zenith Proprietary</span>
+        <h3 style="font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; color: var(--text-color);">
+          Frosted Glassmorphic Panel
+        </h3>
+        <p style="color: var(--muted-color); font-size: 0.95rem; line-height: 1.6;">
+          Ultra-high quality backdrop filter blurring with specular rim highlights, restrained editorial slate tones, and zero visual noise.
+        </p>
+      </div>
+
+      <!-- Magic UI Inspired Feature 3 -->
+      <div class="glass-card spotlight-panel">
+        <span class="section-tag" style="margin-bottom: 12px;">Magic UI Motion</span>
+        <h3 style="font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; color: var(--text-color);">
+          Directional Spotlight Beam
+        </h3>
+        <p style="color: var(--muted-color); font-size: 0.95rem; line-height: 1.6;">
+          Dynamic radial spotlight illumination hugging hover boundaries and revealing hidden textural detail on mouseover.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3. PRODUCT SHOWCASE SECTION ─────────────────────────────────── -->
+  <section class="section-wrap" id="product">
+    <div style="text-align: center; max-width: 720px; margin: 0 auto 40px;">
+      <div class="section-tag">Browser & Terminal Mockups</div>
+      <h2 class="section-title">Autonomous Execution in Action</h2>
+    </div>
+
+    <!-- macOS Safari Browser Mockup -->
+    <div class="browser-mockup">
+      <div class="browser-header">
+        <div class="browser-dots">
+          <div class="browser-dot red"></div>
+          <div class="browser-dot yellow"></div>
+          <div class="browser-dot green"></div>
+        </div>
+        <div class="browser-url-pill">zenith.studio/creative-director</div>
+      </div>
+      <div style="padding: 40px; background: rgba(10, 12, 16, 0.95);">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+          <div style="padding: 24px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-1); margin-bottom: 8px;">
+              [COMPONENT REGISTRY SEARCH]
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-color);">
+              Query: <code>CTA with hover intensity 4+</code><br>
+              Match: <strong>Magnetic Neon Button</strong> (Zenith + Uiverse)
+            </p>
+          </div>
+          <div style="padding: 24px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-2); margin-bottom: 8px;">
+              [THEME COLOR ADAPTATION]
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-color);">
+              Target: <strong>Nordic Navy</strong><br>
+              Accents: <code>#38BDF8</code> &bull; <code>#818CF8</code>
+            </p>
+          </div>
+          <div style="padding: 24px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; color: #34d399; margin-bottom: 8px;">
+              [SECTION SYNTHESIS]
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-color);">
+              Status: <strong>Composed & Rendered</strong><br>
+              Deliverable: Standalone Responsive HTML5
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. FOOTER WITH ANIMATED MESH ────────────────────────────────── -->
+  <footer class="site-footer">
+    <div class="footer-mesh"></div>
+    <div style="position: relative; z-index: 1;">
+      <div class="nav-brand" style="justify-content: center; margin-bottom: 16px;">
+        <div class="nav-brand-dot"></div>
+        <span>Zenith Creative Studio</span>
+      </div>
+      <p style="color: var(--muted-color); font-size: 0.9rem; margin-bottom: 24px;">
+        Crafted with visual vocabulary primitives from Uiverse, Aceternity, Magic UI, and Three.js.
+      </p>
+      <div style="display: flex; gap: 20px; justify-content: center; font-size: 0.84rem; color: var(--muted-color);">
+        <span>Theme: Nordic Navy</span>
+        <span>&bull;</span>
+        <span>Sovereign AI Operating Layer</span>
+        <span>&bull;</span>
+        <span>Zero External CDN Lock-in</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ── Interactive Engine Scripts ──────────────────────────────────── -->
+  <script>
+    // 1. Interactive Cursor Logic
+    (function() {
+      const dot = document.getElementById('cursor-dot');
+      const ring = document.getElementById('cursor-ring');
+      if (!dot || !ring) return;
+
+      let mx = -100, my = -100, rx = -100, ry = -100;
+      window.addEventListener('mousemove', e => {
+        mx = e.clientX;
+        my = e.clientY;
+        dot.style.transform = `translate3d(${mx}px, ${my}px, 0)`;
+      });
+
+      function cursorLoop() {
+        rx += (mx - rx) * 0.18;
+        ry += (my - ry) * 0.18;
+        ring.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+        requestAnimationFrame(cursorLoop);
+      }
+      cursorLoop();
+    })();
+
+    // 2. Interactive Spotlight Logic
+    document.querySelectorAll('.spotlight-panel').forEach(panel => {
+      panel.addEventListener('mousemove', e => {
+        const rect = panel.getBoundingClientRect();
+        panel.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+        panel.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+      });
+    });
+
+    // 3. 3D Card Tilt Physics
+    document.querySelectorAll('[data-tilt]').forEach(card => {
+      card.addEventListener('mousemove', e => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        const inner = card.querySelector('.card-3d-inner');
+        if (inner) {
+          inner.style.transform = `rotateX(${-y * 0.08}deg) rotateY(${x * 0.08}deg)`;
+        }
+      });
+      card.addEventListener('mouseleave', () => {
+        const inner = card.querySelector('.card-3d-inner');
+        if (inner) inner.style.transform = 'rotateX(0deg) rotateY(0deg)';
+      });
+    });
+
+    // 4. Particle Constellation Canvas
+    (function() {
+      const canvas = document.getElementById('particle-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      let w = (canvas.width = window.innerWidth);
+      let h = (canvas.height = window.innerHeight);
+
+      window.addEventListener('resize', () => {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+      });
+
+      const particles = Array.from({ length: 42 }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        r: Math.random() * 2 + 1,
+      }));
+
+      function draw() {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#38BDF8';
+        ctx.strokeStyle = '#38BDF8';
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.x < 0 || p.x > w) p.vx *= -1;
+          if (p.y < 0 || p.y > h) p.vy *= -1;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+
+          for (let j = i + 1; j < particles.length; j++) {
+            const p2 = particles[j];
+            const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+            if (dist < 110) {
+              ctx.globalAlpha = 1 - dist / 110;
+              ctx.lineWidth = 0.5;
+              ctx.beginPath();
+              ctx.moveTo(p.x, p.y);
+              ctx.lineTo(p2.x, p2.y);
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+            }
+          }
+        }
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+
+    // 5. Three.js Interactive Torus Knot
+    (function() {
+      const container = document.getElementById('three-viewport');
+      if (!container || !window.THREE) return;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      const geo = new THREE.TorusKnotGeometry(1.6, 0.45, 120, 20);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x38BDF8,
+        roughness: 0.15,
+        metalness: 0.85,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+
+      const light1 = new THREE.PointLight(0xffffff, 2, 50);
+      light1.position.set(5, 5, 5);
+      scene.add(light1);
+
+      const light2 = new THREE.PointLight(0x818CF8, 2.5, 50);
+      light2.position.set(-5, -5, 2);
+      scene.add(light2);
+
+      scene.add(new THREE.AmbientLight(0x222233));
+      camera.position.z = 4.6;
+
+      let mouseX = 0, mouseY = 0;
+      window.addEventListener('mousemove', e => {
+        mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+      });
+
+      function animate() {
+        mesh.rotation.x += 0.007;
+        mesh.rotation.y += 0.010;
+        mesh.rotation.x += (mouseY * 0.3 - mesh.rotation.x) * 0.05;
+        mesh.rotation.y += (mouseX * 0.3 - mesh.rotation.y) * 0.05;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+    })();
+  </script>
+</body>
+</html>

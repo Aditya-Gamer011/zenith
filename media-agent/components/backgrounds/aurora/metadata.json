@@ -1,0 +1,37 @@
+{
+  "id": "aurora-background",
+  "name": "Aurora Borealis Wave Mesh",
+  "category": "background",
+  "source": "aceternity",
+  "tags": [
+    "aurora",
+    "ambient",
+    "chromatic",
+    "gradient",
+    "hero"
+  ],
+  "framework": "react",
+  "motion": "aurora-drift",
+  "intensity": 4,
+  "best_for": [
+    "hero",
+    "landing-page",
+    "dark-mode"
+  ],
+  "description": "Flowing iridescent chromatic northern lights wave background using overlapping blend modes and fluid keyframe translations.",
+  "code": {
+    "tsx": "import React from \"react\";\n\nexport const AuroraBackground: React.FC<{ children?: React.ReactNode }> = ({ children }) => {\n  return (\n    <div className=\"relative flex flex-col h-screen items-center justify-center bg-zinc-950 text-slate-950 transition-bg overflow-hidden\">\n      <div className=\"absolute inset-0 overflow-hidden pointer-events-none opacity-40\">\n        <div\n          className=\"filter blur-[80px] -inset-[10px] opacity-50 absolute animate-aurora\"\n          style={{\n            backgroundImage: `radial-gradient(ellipse at 100% 0%, var(--accent-1, #38bdf8) 10%, transparent 40%),\n                              radial-gradient(ellipse at 0% 100%, var(--accent-2, #818cf8) 15%, transparent 50%),\n                              radial-gradient(ellipse at 50% 50%, #34d399 10%, transparent 45%)`,\n          }}\n        />\n      </div>\n      <div className=\"relative z-10\">{children}</div>\n    </div>\n  );\n};\n",
+    "css": ".aurora-bg-container {\n  position: relative;\n  width: 100%;\n  min-height: 100vh;\n  background-color: var(--bg-color, #0d0f12);\n  overflow: hidden;\n}\n.aurora-waves {\n  position: absolute;\n  inset: -50%;\n  background: radial-gradient(circle at 30% 20%, var(--accent-1, #d4a373) 0%, transparent 40%),\n              radial-gradient(circle at 70% 60%, var(--accent-2, #3b82f6) 0%, transparent 45%),\n              radial-gradient(circle at 50% 80%, rgba(212, 163, 115, 0.4) 0%, transparent 35%);\n  filter: blur(80px);\n  opacity: 0.35;\n  animation: aurora-flow 18s ease-in-out infinite alternate;\n  pointer-events: none;\n}\n@keyframes aurora-flow {\n  0% { transform: translate(0, 0) scale(1) rotate(0deg); }\n  50% { transform: translate(6%, -4%) scale(1.1) rotate(6deg); }\n  100% { transform: translate(-5%, 5%) scale(0.95) rotate(-4deg); }\n}\n",
+    "html": "<div class=\"aurora-bg-container\">\n  <div class=\"aurora-waves\"></div>\n  <div class=\"hero-content\">\n    <h1>Autonomous Intelligence at Scale</h1>\n  </div>\n</div>\n"
+  },
+  "theme_adaptable_vars": {
+    "accent_1": "--accent-1",
+    "accent_2": "--accent-2",
+    "bg_color": "--bg-color",
+    "card_bg": "--card-bg",
+    "glow_color": "--glow-color",
+    "text_color": "--text-color",
+    "border_color": "--border-color",
+    "font_heading": "--font-heading"
+  }
+}

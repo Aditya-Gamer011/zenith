@@ -1,0 +1,26 @@
+{
+  "id": "grain",
+  "name": "Film Grain Texture",
+  "type": "effect",
+  "tags": [
+    "grain",
+    "film",
+    "texture",
+    "editorial",
+    "analog"
+  ],
+  "visualIntensity": 2,
+  "bestFor": [
+    "editorial",
+    "statement",
+    "cinematic-hero"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "experimental-creative"
+  ],
+  "description": "Micro-textured analog grain overlay imparting tactile prestige and eliminating banding.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

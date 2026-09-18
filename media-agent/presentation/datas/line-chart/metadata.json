@@ -1,0 +1,28 @@
+{
+  "id": "line-chart",
+  "name": "Native Trend Line Chart",
+  "type": "data",
+  "tags": [
+    "chart",
+    "line",
+    "trend",
+    "velocity",
+    "forecast",
+    "data"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "data-story",
+    "financials",
+    "projections"
+  ],
+  "compatibleStyles": [
+    "cinematic-futuristic",
+    "premium-editorial",
+    "minimal-premium"
+  ],
+  "description": "Editable native PowerPoint line chart showing continuous velocity and projection trajectories.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}

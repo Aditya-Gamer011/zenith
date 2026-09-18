@@ -1,0 +1,27 @@
+{
+  "id": "quote",
+  "name": "Editorial Quote Block",
+  "type": "component",
+  "tags": [
+    "quote",
+    "testimonial",
+    "statement",
+    "editorial",
+    "voice"
+  ],
+  "visualIntensity": 3,
+  "bestFor": [
+    "statement",
+    "case-study",
+    "thesis"
+  ],
+  "compatibleStyles": [
+    "premium-editorial",
+    "minimal-premium",
+    "cinematic-futuristic"
+  ],
+  "description": "Monumental quotation with stylized accent quotation marks and executive attribution pill.",
+  "components": [],
+  "motion": [],
+  "default_props": {}
+}
